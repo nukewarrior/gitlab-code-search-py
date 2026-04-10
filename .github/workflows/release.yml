@@ -18,16 +18,20 @@ jobs:
         include:
           - os: ubuntu-latest
             target: linux-x86_64
-            asset_name: gcs-linux-x86_64
+            bin_name: gcs-linux-x86_64
+            output_file: gcs-linux-x86_64
           - os: windows-latest
             target: windows-x86_64
-            asset_name: gcs-windows-x86_64.exe
-          - os: macos-13
+            bin_name: gcs-windows-x86_64
+            output_file: gcs-windows-x86_64.exe
+          - os: macos-15-intel
             target: macos-x86_64
-            asset_name: gcs-macos-x86_64
-          - os: macos-14
+            bin_name: gcs-macos-x86_64
+            output_file: gcs-macos-x86_64
+          - os: macos-15
             target: macos-arm64
-            asset_name: gcs-macos-arm64
+            bin_name: gcs-macos-arm64
+            output_file: gcs-macos-arm64
 
     steps:
       - name: Checkout
@@ -45,26 +49,13 @@ jobs:
 
       - name: Build Binary
         run: |
-          python -m PyInstaller --clean --onefile --name gcs gcs_main.py
-
-      - name: Rename Artifact
-        run: |
-          python - <<'PY'
-          import os
-          import shutil
-          from pathlib import Path
-
-          src = Path("dist") / ("gcs.exe" if os.name == "nt" else "gcs")
-          dst = Path("dist") / "${{ matrix.asset_name }}"
-          shutil.copy2(src, dst)
-          print(f"artifact: {dst}")
-          PY
+          python -m PyInstaller --clean --onefile --name "${{ matrix.bin_name }}" gcs_main.py
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.target }}
-          path: dist/${{ matrix.asset_name }}
+          path: dist/${{ matrix.output_file }}
 
   release:
     name: Create GitHub Release
