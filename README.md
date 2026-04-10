@@ -31,6 +31,13 @@
 .venv/bin/gcs
 ```
 
+查看版本：
+
+```bash
+.venv/bin/gcs --version
+./dist/gcs --version
+```
+
 开始使用前，请先创建 GitLab Token：
 
 - [如何创建 GitLab Token](docs/gitlab-token.md)

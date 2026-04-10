@@ -5,6 +5,7 @@ import logging
 from collections.abc import Iterable
 from urllib.parse import quote, urlparse
 
+from . import __version__
 from .gitlab_api import GitLabClient
 from .models import BranchRef, SearchResult
 
@@ -138,6 +139,12 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="gcs",
         description="通过关键字搜索 GitLab 所有匹配的项目。",
+    )
+    parser.add_argument(
+        "-V",
+        "--version",
+        action="version",
+        version=f"gcs {__version__}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
