@@ -31,6 +31,10 @@
 .venv/bin/gcs
 ```
 
+开始使用前，请先创建 GitLab Token：
+
+- [如何创建 GitLab Token](docs/gitlab-token.md)
+
 ## 使用说明
 
 ### 1) 搜索所有项目（默认分支）
@@ -82,6 +86,8 @@
 
 - 执行完成后会在当前目录生成 Excel 文件
 - 表头包含：关键字、分支、项目信息、文件名、代码链接、命中内容
+
+![搜索结果截图](assets/search_ouput.png)
 
 ## 打包 macOS 可执行文件
 
