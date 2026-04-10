@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# Python virtual env
+.venv/
+
+# Python cache/bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Editable install metadata
+*.egg-info/
+
+# Build artifacts
+build/
+dist/
+.pyinstaller/
+gcs.spec
+
+# IDE
+.idea/
+.vscode/
+
+# Runtime outputs
+*.xlsx
+
+# Upstream reference repository (not part of Python rewrite)
+upstream-go/

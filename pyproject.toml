@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gitlab-code-search-py"
+version = "0.1.0"
+description = "Search all GitLab projects by keywords and export results to Excel."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [
+  { name = "gitlabCodeSearch Python Port" }
+]
+dependencies = [
+  "openpyxl>=3.1.2",
+  "requests>=2.31.0",
+]
+
+[project.scripts]
+gcs = "gitlab_code_search.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["gitlab_code_search*"]
