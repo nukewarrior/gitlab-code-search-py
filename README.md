@@ -103,6 +103,26 @@
 dist/gcs
 ```
 
+## GitHub Actions 自动发布
+
+仓库已配置工作流：
+
+- 文件：`.github/workflows/release.yml`
+- 触发条件：推送 `v*` 格式的 tag（例如 `v0.1.0`）
+- 自动构建平台：
+  - macOS Intel（x86_64）
+  - macOS Apple Silicon（arm64）
+  - Linux x86_64
+  - Windows x86_64
+- 自动创建 GitHub Release 并上传二进制附件
+
+触发示例：
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
 ## 安全建议
 
 - 不要把真实 token 写入代码或提交到 Git 仓库
