@@ -6,6 +6,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Iterable
 from urllib.parse import quote, urlparse
 
+from tqdm import tqdm
+
 from . import __version__
 from .gitlab_api import GitLabClient
 from .models import BranchRef, Project, SearchResult
@@ -146,23 +148,33 @@ def run_search(args: argparse.Namespace) -> int:
             executor.submit(_build_search_task_results, client, project, branch_ref, word): (project, branch_ref, word)
             for project, branch_ref, word in tasks
         }
-        for future in as_completed(future_to_task):
-            project, branch_ref, word = future_to_task[future]
-            try:
-                results = future.result()
-            except Exception as exc:  # noqa: BLE001
-                failed_tasks += 1
-                logger.error(
-                    "搜索失败: project=%s branch=%s word=%s err=%s",
-                    project.id,
-                    branch_ref.name,
-                    word,
-                    exc,
-                )
-                continue
-            successful_tasks += 1
-            if results:
-                all_results.extend(results)
+        with tqdm(
+            total=len(tasks),
+            desc="检索进度",
+            unit="task",
+            dynamic_ncols=True,
+            disable=args.no_progress,
+            leave=True,
+        ) as progress:
+            for future in as_completed(future_to_task):
+                project, branch_ref, word = future_to_task[future]
+                try:
+                    results = future.result()
+                except Exception as exc:  # noqa: BLE001
+                    failed_tasks += 1
+                    logger.error(
+                        "搜索失败: project=%s branch=%s word=%s err=%s",
+                        project.id,
+                        branch_ref.name,
+                        word,
+                        exc,
+                    )
+                    progress.update(1)
+                    continue
+                successful_tasks += 1
+                if results:
+                    all_results.extend(results)
+                progress.update(1)
 
     all_results.sort(
         key=lambda item: (
@@ -232,6 +244,11 @@ def create_parser() -> argparse.ArgumentParser:
         type=parse_positive_int,
         default=8,
         help="并发 worker 数量，默认 8。",
+    )
+    search_parser.add_argument(
+        "--no-progress",
+        action="store_true",
+        help="关闭并发任务进度条显示。",
     )
     search_parser.set_defaults(func=run_search)
 

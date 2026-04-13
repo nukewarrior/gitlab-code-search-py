@@ -6,6 +6,7 @@
 - 支持搜索全部项目或单个项目
 - 支持单分支或全部分支搜索
 - 支持并发检索（默认 `--workers 8`）
+- 支持并发进度条（默认显示）
 - 自动导出 Excel 结果
 
 ## 功能特性
@@ -14,6 +15,7 @@
 - 单项目搜索：`-u` 直接传项目 URL
 - 全分支搜索：`--all-branches`
 - 并发检索：`--workers`（默认 8）
+- 进度条开关：`--no-progress`（关闭进度条）
 - 结果导出：`YYYY_MM_DD_HH_MM.xlsx`
 
 ## 环境要求
@@ -98,6 +100,8 @@
   --all-branches
 ```
 
+默认会显示并发任务进度条（包含完成比例、速度、ETA）。
+
 指定并发：
 
 ```bash
@@ -107,6 +111,17 @@
   -w 'businessSearch' \
   --all-branches \
   --workers 16
+```
+
+关闭进度条：
+
+```bash
+.venv/bin/gcs search \
+  -u 'https://gitlab.example.com/group/subgroup/project' \
+  -t 'your_token' \
+  -w 'businessSearch' \
+  --all-branches \
+  --no-progress
 ```
 
 ### 6) 多关键字
