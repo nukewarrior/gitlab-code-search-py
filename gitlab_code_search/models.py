@@ -6,6 +6,7 @@ class Project:
     id: int
     name: str
     web_url: str
+    default_branch: str | None = None
 
 
 @dataclass

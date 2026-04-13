@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import argparse
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Iterable
 from urllib.parse import quote, urlparse
 
 from . import __version__
 from .gitlab_api import GitLabClient
-from .models import BranchRef, SearchResult
+from .models import BranchRef, Project, SearchResult
 
 
 logger = logging.getLogger("gcs")
@@ -46,6 +47,37 @@ def parse_gitlab_input_url(raw_url: str) -> tuple[str, str | None]:
     return base_url, project_path
 
 
+def parse_positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("必须是整数。") from exc
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("必须大于等于 1。")
+    return parsed
+
+
+def _build_search_task_results(
+    client: GitLabClient, project: Project, branch_ref: BranchRef, word: str
+) -> list[SearchResult]:
+    blobs = client.search_blobs(project_id=project.id, keyword=word, branch=branch_ref.search_ref)
+    results: list[SearchResult] = []
+    for blob in blobs:
+        results.append(
+            SearchResult(
+                word=word,
+                branch=branch_ref.name,
+                project_id=project.id,
+                project_name=project.name,
+                project_url=project.web_url,
+                file_name=blob.filename,
+                line_url=build_line_url(project.web_url, branch_ref.name, blob.filename, blob.startline),
+                data=blob.data,
+            )
+        )
+    return results
+
+
 def run_search(args: argparse.Namespace) -> int:
     words = parse_words(args.words)
     if not words:
@@ -59,8 +91,6 @@ def run_search(args: argparse.Namespace) -> int:
         return 2
 
     client = GitLabClient(base_url=base_url, token=args.token)
-    default_branch = args.branch or "master"
-
     if project_path:
         try:
             project = client.get_project_by_path(project_path)
@@ -77,7 +107,9 @@ def run_search(args: argparse.Namespace) -> int:
             return 1
 
     logger.info("共获取到 %s 个项目，开始检索...", len(projects))
-    all_results: list[SearchResult] = []
+
+    # Build task list first so we can run concurrent searches.
+    tasks: list[tuple[Project, BranchRef, str]] = []
 
     for index, project in enumerate(projects, start=1):
         logger.info("进度 %s/%s: %s", index, len(projects), project.name)
@@ -91,37 +123,57 @@ def run_search(args: argparse.Namespace) -> int:
                 logger.warning("项目无可用分支，跳过: project=%s", project.id)
                 continue
         else:
-            branch_refs = [BranchRef(name=default_branch, search_ref=default_branch)]
+            branch_name = args.branch or project.default_branch or "master"
+            branch_refs = [BranchRef(name=branch_name, search_ref=branch_name)]
 
         for branch_ref in branch_refs:
-            branch_name = branch_ref.name
-            search_ref = branch_ref.search_ref
             for word in words:
-                try:
-                    blobs = client.search_blobs(project_id=project.id, keyword=word, branch=search_ref)
-                except Exception as exc:  # noqa: BLE001
-                    logger.error(
-                        "搜索失败: project=%s branch=%s word=%s err=%s",
-                        project.id,
-                        branch_name,
-                        word,
-                        exc,
-                    )
-                    continue
+                tasks.append((project, branch_ref, word))
 
-                for blob in blobs:
-                    all_results.append(
-                        SearchResult(
-                            word=word,
-                            branch=branch_name,
-                            project_id=project.id,
-                            project_name=project.name,
-                            project_url=project.web_url,
-                            file_name=blob.filename,
-                            line_url=build_line_url(project.web_url, branch_name, blob.filename, blob.startline),
-                            data=blob.data,
-                        )
-                    )
+    logger.info(
+        "共生成 %s 个检索任务，workers=%s，模式=%s",
+        len(tasks),
+        args.workers,
+        "all-branches" if args.all_branches else "default-branch",
+    )
+
+    all_results: list[SearchResult] = []
+    failed_tasks = 0
+    successful_tasks = 0
+
+    with ThreadPoolExecutor(max_workers=args.workers) as executor:
+        future_to_task = {
+            executor.submit(_build_search_task_results, client, project, branch_ref, word): (project, branch_ref, word)
+            for project, branch_ref, word in tasks
+        }
+        for future in as_completed(future_to_task):
+            project, branch_ref, word = future_to_task[future]
+            try:
+                results = future.result()
+            except Exception as exc:  # noqa: BLE001
+                failed_tasks += 1
+                logger.error(
+                    "搜索失败: project=%s branch=%s word=%s err=%s",
+                    project.id,
+                    branch_ref.name,
+                    word,
+                    exc,
+                )
+                continue
+            successful_tasks += 1
+            if results:
+                all_results.extend(results)
+
+    all_results.sort(
+        key=lambda item: (
+            item.project_id,
+            item.branch,
+            item.word,
+            item.file_name,
+            item.line_url,
+            item.data,
+        )
+    )
 
     try:
         from .excel_writer import write_results_xlsx
@@ -131,7 +183,13 @@ def run_search(args: argparse.Namespace) -> int:
         logger.error("将内容写入到 Excel 失败: %s", exc)
         return 1
 
-    logger.info("搜索完成，命中 %s 条，结果文件: %s", len(all_results), output_path)
+    logger.info(
+        "搜索完成：任务成功=%s 失败=%s 命中=%s 结果文件=%s",
+        successful_tasks,
+        failed_tasks,
+        len(all_results),
+        output_path,
+    )
     return 0
 
 
@@ -163,11 +221,17 @@ def create_parser() -> argparse.ArgumentParser:
         action="append",
         help='检索关键字。支持多次传入，且每次可逗号分隔，例如 `-w "a,b" -w "c"`。',
     )
-    search_parser.add_argument("-b", "--branch", default="master", help="检索分支，默认 master")
+    search_parser.add_argument("-b", "--branch", help="检索分支，默认项目主分支")
     search_parser.add_argument(
         "--all-branches",
         action="store_true",
         help="搜索所有分支。开启后会忽略 -b/--branch。",
+    )
+    search_parser.add_argument(
+        "--workers",
+        type=parse_positive_int,
+        default=8,
+        help="并发 worker 数量，默认 8。",
     )
     search_parser.set_defaults(func=run_search)
 

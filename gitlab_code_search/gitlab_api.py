@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from typing import Any
 from urllib.parse import quote
 
@@ -13,13 +15,8 @@ class GitLabClient:
         self.base_url = base_url.rstrip("/")
         self.api_base = f"{self.base_url}/api/v4"
         self.per_page = per_page
-        self.session = requests.Session()
-        self.session.headers.update(
-            {
-                "PRIVATE-TOKEN": token,
-                "Accept": "application/json",
-            }
-        )
+        self._token = token
+        self._local = threading.local()
 
     def list_projects(self) -> list[Project]:
         params = {"simple": "true", "archived": "false"}
@@ -34,24 +31,14 @@ class GitLabClient:
                     id=pid,
                     name=str(item.get("name", "")),
                     web_url=str(item.get("web_url", "")),
+                    default_branch=(str(item.get("default_branch", "")).strip() or None),
                 )
             )
         return projects
 
     def get_project_by_path(self, project_path: str) -> Project:
         encoded_path = quote(project_path, safe="")
-        response = self.session.get(
-            f"{self.api_base}/projects/{encoded_path}",
-            timeout=30,
-        )
-        try:
-            response.raise_for_status()
-        except requests.HTTPError as exc:
-            detail = response.text[:300].strip()
-            raise requests.HTTPError(
-                f"{exc}. url={response.url} detail={detail}"
-            ) from exc
-
+        response = self._request_get(f"{self.api_base}/projects/{encoded_path}")
         item = response.json()
         pid = int(item.get("id", 0))
         if pid == 0:
@@ -60,6 +47,7 @@ class GitLabClient:
             id=pid,
             name=str(item.get("name", "")),
             web_url=str(item.get("web_url", "")),
+            default_branch=(str(item.get("default_branch", "")).strip() or None),
         )
 
     def search_blobs(self, project_id: int, keyword: str, branch: str) -> list[BlobSearchResult]:
@@ -110,19 +98,7 @@ class GitLabClient:
                 "page": page,
                 "per_page": self.per_page,
             }
-            response = self.session.get(
-                f"{self.api_base}{path}",
-                params=request_params,
-                timeout=30,
-            )
-            try:
-                response.raise_for_status()
-            except requests.HTTPError as exc:
-                detail = response.text[:300].strip()
-                raise requests.HTTPError(
-                    f"{exc}. url={response.url} detail={detail}"
-                ) from exc
-
+            response = self._request_get(f"{self.api_base}{path}", params=request_params)
             page_items = response.json()
             if not isinstance(page_items, list):
                 break
@@ -133,3 +109,49 @@ class GitLabClient:
             page += 1
 
         return items
+
+    def _get_session(self) -> requests.Session:
+        session = getattr(self._local, "session", None)
+        if session is None:
+            session = requests.Session()
+            session.headers.update(
+                {
+                    "PRIVATE-TOKEN": self._token,
+                    "Accept": "application/json",
+                }
+            )
+            self._local.session = session
+        return session
+
+    def _request_get(self, url: str, params: dict[str, Any] | None = None) -> requests.Response:
+        retries = 3
+        backoff = 0.5
+        session = self._get_session()
+        last_exc: Exception | None = None
+
+        for attempt in range(retries):
+            try:
+                response = session.get(url, params=params, timeout=30)
+                response.raise_for_status()
+                return response
+            except requests.HTTPError as exc:
+                response = exc.response
+                status_code = response.status_code if response is not None else None
+                if status_code in (429, 500, 502, 503, 504) and attempt < retries - 1:
+                    time.sleep(backoff * (2**attempt))
+                    last_exc = exc
+                    continue
+                detail = response.text[:300].strip() if response is not None else ""
+                raise requests.HTTPError(
+                    f"{exc}. url={response.url if response is not None else url} detail={detail}"
+                ) from exc
+            except (requests.Timeout, requests.ConnectionError) as exc:
+                if attempt < retries - 1:
+                    time.sleep(backoff * (2**attempt))
+                    last_exc = exc
+                    continue
+                raise exc
+
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("request failed without exception")
