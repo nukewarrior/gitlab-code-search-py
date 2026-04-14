@@ -16,6 +16,7 @@
 - 全分支搜索：`--all-branches`
 - 并发检索：`--workers`（默认 8）
 - 进度条开关：`--no-progress`（关闭进度条）
+- 多格式导出：`--format`（xlsx/csv/json）
 - 结果导出：`YYYY_MM_DD_HH_MM.xlsx`
 
 ## 环境要求
@@ -131,10 +132,40 @@
 .venv/bin/gcs search -u 'https://gitlab.example.com' -t 'your_token' -w 'a,b' -w 'c'
 ```
 
+### 7) 多格式导出
+
+默认（不传 `--format`，仅导出 xlsx）：
+
+```bash
+.venv/bin/gcs search -u 'https://gitlab.example.com' -t 'your_token' -w 'businessSearch'
+```
+
+仅导出 JSON：
+
+```bash
+.venv/bin/gcs search -u 'https://gitlab.example.com' -t 'your_token' -w 'businessSearch' --format json
+```
+
+导出 CSV + JSON：
+
+```bash
+.venv/bin/gcs search -u 'https://gitlab.example.com' -t 'your_token' -w 'businessSearch' --format csv --format json
+```
+
+一次导出 XLSX + CSV + JSON：
+
+```bash
+.venv/bin/gcs search -u 'https://gitlab.example.com' -t 'your_token' -w 'businessSearch' --format xlsx,csv,json
+```
+
 ## 输出说明
 
-- 执行完成后会在当前目录生成 Excel 文件
-- 表头包含：关键字、分支、项目信息、文件名、代码链接、命中内容
+- 执行完成后会在当前目录生成导出文件（默认 xlsx，可按 `--format` 输出 csv/json）
+- 同一次检索使用统一时间戳文件名：
+  - `YYYY_MM_DD_HH_MM.xlsx`
+  - `YYYY_MM_DD_HH_MM.csv`
+  - `YYYY_MM_DD_HH_MM.json`
+- 表头/字段顺序保持一致：关键字、分支、项目信息、文件名、代码链接、命中内容
 
 ![搜索结果截图](assets/search_ouput.png)
 

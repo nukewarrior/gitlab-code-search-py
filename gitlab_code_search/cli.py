@@ -14,6 +14,7 @@ from .models import BranchRef, Project, SearchResult
 
 
 logger = logging.getLogger("gcs")
+SUPPORTED_OUTPUT_FORMATS = ("xlsx", "csv", "json")
 
 
 def parse_words(words_args: Iterable[str]) -> list[str]:
@@ -59,6 +60,24 @@ def parse_positive_int(value: str) -> int:
     return parsed
 
 
+def parse_output_formats(format_args: list[str] | None) -> list[str]:
+    if not format_args:
+        return ["xlsx"]
+    formats: list[str] = []
+    for raw in format_args:
+        for part in raw.split(","):
+            fmt = part.strip().lower()
+            if not fmt:
+                continue
+            if fmt not in SUPPORTED_OUTPUT_FORMATS:
+                raise ValueError(f"不支持的导出格式: {fmt}，支持: {','.join(SUPPORTED_OUTPUT_FORMATS)}")
+            formats.append(fmt)
+    if not formats:
+        return ["xlsx"]
+    # de-duplicate and keep order
+    return list(dict.fromkeys(formats))
+
+
 def _build_search_task_results(
     client: GitLabClient, project: Project, branch_ref: BranchRef, word: str
 ) -> list[SearchResult]:
@@ -88,6 +107,12 @@ def run_search(args: argparse.Namespace) -> int:
 
     try:
         base_url, project_path = parse_gitlab_input_url(args.url)
+    except ValueError as exc:
+        logger.error(str(exc))
+        return 2
+
+    try:
+        output_formats = parse_output_formats(args.format)
     except ValueError as exc:
         logger.error(str(exc))
         return 2
@@ -188,20 +213,22 @@ def run_search(args: argparse.Namespace) -> int:
     )
 
     try:
-        from .excel_writer import write_results_xlsx
+        from .excel_writer import write_results
 
-        output_path = write_results_xlsx(all_results)
+        output_paths = write_results(all_results, formats=output_formats)
     except Exception as exc:  # noqa: BLE001
-        logger.error("将内容写入到 Excel 失败: %s", exc)
+        logger.error("将内容写入到导出文件失败: %s", exc)
         return 1
 
     logger.info(
-        "搜索完成：任务成功=%s 失败=%s 命中=%s 结果文件=%s",
+        "搜索完成：任务成功=%s 失败=%s 命中=%s 导出格式=%s",
         successful_tasks,
         failed_tasks,
         len(all_results),
-        output_path,
+        ",".join(output_formats),
     )
+    for output_path in output_paths:
+        logger.info("结果文件: %s", output_path)
     return 0
 
 
@@ -249,6 +276,11 @@ def create_parser() -> argparse.ArgumentParser:
         "--no-progress",
         action="store_true",
         help="关闭并发任务进度条显示。",
+    )
+    search_parser.add_argument(
+        "--format",
+        action="append",
+        help="导出格式，支持 xlsx,csv,json。可重复或逗号分隔；默认 xlsx。",
     )
     search_parser.set_defaults(func=run_search)
 
