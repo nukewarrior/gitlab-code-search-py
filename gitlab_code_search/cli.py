@@ -30,7 +30,8 @@ def parse_words(words_args: Iterable[str]) -> list[str]:
 
 def build_line_url(project_url: str, branch: str, filename: str, startline: int) -> str:
     encoded_branch = quote(branch, safe="")
-    return f"{project_url}/-/blob/{encoded_branch}/{filename}#L{startline}"
+    encoded_filename = quote(filename, safe="/")
+    return f"{project_url}/-/blob/{encoded_branch}/{encoded_filename}#L{startline}"
 
 
 def parse_gitlab_input_url(raw_url: str) -> tuple[str, str | None]:

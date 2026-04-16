@@ -22,12 +22,28 @@ OUTPUT_COLUMNS = [
 
 
 def build_output_basename() -> str:
-    return datetime.now().strftime("%Y_%m_%d_%H_%M")
+    return datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
 
 
 def _build_output_path(output_dir: str | Path, base_name: str, ext: str) -> Path:
     output_dir = Path(output_dir)
     return output_dir / f"{base_name}.{ext}"
+
+
+def _resolve_available_base_name(
+    output_dir: str | Path,
+    base_name: str,
+    formats: list[str],
+) -> str:
+    output_dir = Path(output_dir)
+    candidate = base_name
+    suffix = 1
+
+    while any(_build_output_path(output_dir, candidate, fmt).exists() for fmt in formats):
+        candidate = f"{base_name}_{suffix}"
+        suffix += 1
+
+    return candidate
 
 
 def _result_to_row(result: SearchResult) -> list[object]:
@@ -39,7 +55,7 @@ def _result_to_dict(result: SearchResult) -> dict[str, object]:
 
 
 def write_results_xlsx(results: list[SearchResult], output_dir: str | Path = ".", base_name: str | None = None) -> Path:
-    base_name = base_name or build_output_basename()
+    base_name = _resolve_available_base_name(output_dir, base_name or build_output_basename(), ["xlsx"])
     output_path = _build_output_path(output_dir, base_name, "xlsx")
 
     workbook = Workbook()
@@ -57,7 +73,7 @@ def write_results_xlsx(results: list[SearchResult], output_dir: str | Path = "."
 
 
 def write_results_csv(results: list[SearchResult], output_dir: str | Path = ".", base_name: str | None = None) -> Path:
-    base_name = base_name or build_output_basename()
+    base_name = _resolve_available_base_name(output_dir, base_name or build_output_basename(), ["csv"])
     output_path = _build_output_path(output_dir, base_name, "csv")
 
     with output_path.open("w", newline="", encoding="utf-8") as fp:
@@ -69,7 +85,7 @@ def write_results_csv(results: list[SearchResult], output_dir: str | Path = ".",
 
 
 def write_results_json(results: list[SearchResult], output_dir: str | Path = ".", base_name: str | None = None) -> Path:
-    base_name = base_name or build_output_basename()
+    base_name = _resolve_available_base_name(output_dir, base_name or build_output_basename(), ["json"])
     output_path = _build_output_path(output_dir, base_name, "json")
 
     data = [_result_to_dict(result) for result in results]
@@ -84,7 +100,7 @@ def write_results(
     output_dir: str | Path = ".",
     base_name: str | None = None,
 ) -> list[Path]:
-    base_name = base_name or build_output_basename()
+    base_name = _resolve_available_base_name(output_dir, base_name or build_output_basename(), formats)
     output_paths: list[Path] = []
     for fmt in formats:
         if fmt == "xlsx":
