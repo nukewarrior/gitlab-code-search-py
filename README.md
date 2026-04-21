@@ -209,6 +209,36 @@
 dist/gcs
 ```
 
+## Docker Compose 直接运行编译后二进制
+
+适用于已经拿到 Linux 可执行文件的场景，例如 GitHub Release 里的 `gcs-linux-x86_64`。
+
+1. 准备二进制和环境变量：
+
+```bash
+cp .env.example .env
+# 把 Linux 二进制放到 .env 里的 GCS_BINARY_PATH，默认是 ./dist/gcs-linux-x86_64
+```
+
+2. 启动 `serve`：
+
+```bash
+docker compose up -d
+```
+
+3. 查看日志：
+
+```bash
+docker compose logs -f gcs-serve
+```
+
+说明：
+
+- `compose.yaml` 会直接挂载并执行编译后的二进制，不会在容器里重新安装 Python 依赖或重新构建
+- `GCS_BINARY_PATH` 必须指向 Linux 二进制，不能使用当前机器打出来的 macOS `dist/gcs`
+- `GCS_WORKDIR_HOST` 会映射到容器内 `/data`，其中包含 SQLite、导出文件和 `serve` 持久化 PAT，应放在私有目录
+- 如果使用 arm64 Linux 二进制，请同时修改 `GCS_BINARY_PATH` 和 `GCS_DOCKER_PLATFORM`
+
 ## GitHub Actions 自动发布
 
 仓库已配置工作流：

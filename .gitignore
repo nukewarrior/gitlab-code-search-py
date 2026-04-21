@@ -21,6 +21,7 @@ gcs.spec
 # IDE
 .idea/
 .vscode/
+.env
 
 # Runtime outputs
 *.xlsx
