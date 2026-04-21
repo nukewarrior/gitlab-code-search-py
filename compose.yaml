@@ -1,10 +1,9 @@
 services:
   gcs-serve:
-    image: debian:bookworm-slim
+    image: ${GCS_IMAGE:?set GCS_IMAGE in .env or your shell}
     platform: ${GCS_DOCKER_PLATFORM:-linux/amd64}
     restart: unless-stopped
     init: true
-    working_dir: /srv/gcs
     environment:
       GCS_ADMIN_TOKEN: ${GCS_ADMIN_TOKEN:?set GCS_ADMIN_TOKEN in .env or your shell}
       GCS_GITLAB_URL: ${GCS_GITLAB_URL:-}
@@ -15,31 +14,5 @@ services:
       - "${GCS_PORT:-8765}:${GCS_PORT:-8765}"
     volumes:
       - type: bind
-        source: ${GCS_BINARY_PATH:-./dist/gcs-linux-x86_64}
-        target: /binary/gcs
-        read_only: true
-      - type: bind
         source: ${GCS_WORKDIR_HOST:-./gcs_workspace}
         target: /data
-    command:
-      - /bin/sh
-      - -lc
-      - |
-        set -eu
-        cp /binary/gcs /tmp/gcs
-        chmod +x /tmp/gcs
-        if [ -n "${GCS_GITLAB_URL:-}" ]; then
-          exec /tmp/gcs serve \
-            --workdir "${GCS_WORKDIR}" \
-            --admin-token "${GCS_ADMIN_TOKEN}" \
-            --host 0.0.0.0 \
-            --port "${GCS_PORT}" \
-            --gitlab-url "${GCS_GITLAB_URL}" \
-            --workers "${GCS_WORKERS}"
-        fi
-        exec /tmp/gcs serve \
-          --workdir "${GCS_WORKDIR}" \
-          --admin-token "${GCS_ADMIN_TOKEN}" \
-          --host 0.0.0.0 \
-          --port "${GCS_PORT}" \
-          --workers "${GCS_WORKERS}"

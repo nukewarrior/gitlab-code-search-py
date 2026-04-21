@@ -209,15 +209,15 @@
 dist/gcs
 ```
 
-## Docker Compose 直接运行编译后二进制
+## Docker Compose 直接运行发布镜像
 
-适用于已经拿到 Linux 可执行文件的场景，例如 GitHub Release 里的 `gcs-linux-x86_64`。
+默认推荐直接使用 GitHub Action 发布到 GHCR 的镜像，不需要先下载二进制。
 
-1. 准备二进制和环境变量：
+1. 准备环境变量：
 
 ```bash
 cp .env.example .env
-# 把 Linux 二进制放到 .env 里的 GCS_BINARY_PATH，默认是 ./dist/gcs-linux-x86_64
+# 把 GCS_IMAGE 改成仓库实际发布出来的 GHCR 镜像地址
 ```
 
 2. 启动 `serve`：
@@ -234,10 +234,9 @@ docker compose logs -f gcs-serve
 
 说明：
 
-- `compose.yaml` 会直接挂载并执行编译后的二进制，不会在容器里重新安装 Python 依赖或重新构建
-- `GCS_BINARY_PATH` 必须指向 Linux 二进制，不能使用当前机器打出来的 macOS `dist/gcs`
+- `compose.yaml` 默认直接拉取 GHCR 镜像，别人只需要填 `.env` 就可以启动
 - `GCS_WORKDIR_HOST` 会映射到容器内 `/data`，其中包含 SQLite、导出文件和 `serve` 持久化 PAT，应放在私有目录
-- 如果使用 arm64 Linux 二进制，请同时修改 `GCS_BINARY_PATH` 和 `GCS_DOCKER_PLATFORM`
+- 当前 GitHub Action 发布的是 `linux/amd64` 镜像；在 Apple Silicon 上可以继续用 Docker Desktop 模拟运行
 
 ## GitHub Actions 自动发布
 
@@ -250,6 +249,7 @@ docker compose logs -f gcs-serve
   - macOS Apple Silicon（arm64）
   - Linux x86_64
   - Windows x86_64
+- 自动构建并推送 Docker 镜像到 GitHub Container Registry（GHCR）
 - 自动创建 GitHub Release 并上传二进制附件
 
 触发示例：
