@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from collections.abc import Iterable
 from pathlib import Path
 from urllib.parse import urlparse
@@ -13,6 +14,18 @@ from .search_service import SearchRequest, build_line_url, execute_search
 
 logger = logging.getLogger("gcs")
 SUPPORTED_OUTPUT_FORMATS = ("xlsx", "csv", "json")
+
+
+def configure_stdio_encoding() -> None:
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except ValueError:
+            continue
 
 
 def parse_words(words_args: Iterable[str]) -> list[str]:
@@ -214,6 +227,7 @@ def create_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    configure_stdio_encoding()
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",

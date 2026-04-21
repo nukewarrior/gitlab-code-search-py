@@ -1,7 +1,38 @@
 from urllib.parse import urlsplit
 import unittest
+from unittest.mock import patch
 
-from gitlab_code_search.cli import build_line_url
+from gitlab_code_search.cli import build_line_url, configure_stdio_encoding
+
+
+class FakeStream:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[tuple[str, str]] = []
+
+    def reconfigure(self, *, encoding: str, errors: str) -> None:
+        if self.fail:
+            raise ValueError("stream is closed")
+        self.calls.append((encoding, errors))
+
+
+class ConfigureStdioEncodingTests(unittest.TestCase):
+    def test_configure_stdio_encoding_sets_utf8_on_stdout_and_stderr(self) -> None:
+        stdout = FakeStream()
+        stderr = FakeStream()
+        with patch("gitlab_code_search.cli.sys.stdout", stdout), patch("gitlab_code_search.cli.sys.stderr", stderr):
+            configure_stdio_encoding()
+
+        self.assertEqual(stdout.calls, [("utf-8", "replace")])
+        self.assertEqual(stderr.calls, [("utf-8", "replace")])
+
+    def test_configure_stdio_encoding_ignores_streams_that_cannot_reconfigure(self) -> None:
+        stdout = FakeStream(fail=True)
+        stderr = object()
+        with patch("gitlab_code_search.cli.sys.stdout", stdout), patch("gitlab_code_search.cli.sys.stderr", stderr):
+            configure_stdio_encoding()
+
+        self.assertEqual(stdout.calls, [])
 
 
 class BuildLineUrlTests(unittest.TestCase):
