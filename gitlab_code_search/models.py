@@ -32,3 +32,10 @@ class SearchResult:
     file_name: str
     line_url: str
     data: str
+
+
+@dataclass
+class AuthenticatedUser:
+    id: int
+    username: str
+    name: str

@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import requests
 
-from .models import BlobSearchResult, BranchRef, Project
+from .models import AuthenticatedUser, BlobSearchResult, BranchRef, Project
 
 
 class GitLabClient:
@@ -48,6 +48,18 @@ class GitLabClient:
             name=str(item.get("name", "")),
             web_url=str(item.get("web_url", "")),
             default_branch=(str(item.get("default_branch", "")).strip() or None),
+        )
+
+    def get_current_user(self) -> AuthenticatedUser:
+        response = self._request_get(f"{self.api_base}/user")
+        item = response.json()
+        user_id = int(item.get("id", 0))
+        if user_id == 0:
+            raise ValueError("invalid current user response")
+        return AuthenticatedUser(
+            id=user_id,
+            username=str(item.get("username", "")),
+            name=str(item.get("name", "")),
         )
 
     def search_blobs(self, project_id: int, keyword: str, branch: str) -> list[BlobSearchResult]:

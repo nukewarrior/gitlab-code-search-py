@@ -8,6 +8,7 @@
 - 支持并发检索（默认 `--workers 8`）
 - 支持并发进度条（默认显示）
 - 自动导出 Excel 结果
+- 支持 `serve` 后台模式和本地 WebUI
 
 ## 功能特性
 
@@ -48,6 +49,25 @@
 - [如何创建 GitLab Token](docs/gitlab-token.md)
 
 ## 使用说明
+
+### 0) 启动本地 Web 服务
+
+```bash
+.venv/bin/gcs serve \
+  --workdir ./gcs_workspace \
+  --admin-token 'your_admin_pat' \
+  --gitlab-url 'https://gitlab.example.com'
+```
+
+说明：
+
+- `--workdir` 必填，用于保存 SQLite 数据库与导出文件
+- `--workdir` 现在也会保存 `serve` 登录后的 GitLab PAT，必须放在受限目录，不应共享、打包进产物或提交到仓库
+- 首次启动建议显式传 `--gitlab-url`
+- 同一个 `workdir` 会锁定管理员身份，后续不能换成其他管理员账号启动
+- Web 登录同样需要用户自己的 GitLab PAT；如果没有，可按登录页指引去 GitLab 创建
+- 如果从旧版 macOS Keychain 方案升级到当前版本，历史 Web 会话会统一失效，用户需要重新登录一次
+- 打包后仍然只有一个可执行文件：`dist/gcs`
 
 ### 1) 搜索所有项目（默认分支）
 
@@ -213,6 +233,7 @@ git push origin v0.1.0
 
 - 不要把真实 token 写入代码或提交到 Git 仓库
 - 建议通过环境变量传 token，或运行时手动传入
+- `serve --workdir` 会持久化保存 PAT，应放在当前机器的私有目录并限制访问权限
 - 若 token 曾暴露，请立即在 GitLab 端执行 rotate/revoke
 
 ## 致谢

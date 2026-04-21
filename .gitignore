@@ -27,3 +27,5 @@ gcs.spec
 
 # Upstream reference repository (not part of Python rewrite)
 upstream-go/
+
+gcs_workspace/

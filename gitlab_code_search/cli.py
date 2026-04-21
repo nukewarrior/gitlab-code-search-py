@@ -2,15 +2,13 @@ from __future__ import annotations
 
 import argparse
 import logging
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections.abc import Iterable
-from urllib.parse import quote, urlparse
-
-from tqdm import tqdm
+from pathlib import Path
+from urllib.parse import urlparse
 
 from . import __version__
-from .gitlab_api import GitLabClient
-from .models import BranchRef, Project, SearchResult
+from .serve import ServeApplication, ServeConfig, StartupError
+from .search_service import SearchRequest, build_line_url, execute_search
 
 
 logger = logging.getLogger("gcs")
@@ -26,13 +24,6 @@ def parse_words(words_args: Iterable[str]) -> list[str]:
                 words.append(part)
     # keep insertion order while de-duplicating
     return list(dict.fromkeys(words))
-
-
-def build_line_url(project_url: str, branch: str, filename: str, startline: int) -> str:
-    encoded_branch = quote(branch, safe="")
-    encoded_filename = quote(filename, safe="/")
-    return f"{project_url}/-/blob/{encoded_branch}/{encoded_filename}#L{startline}"
-
 
 def parse_gitlab_input_url(raw_url: str) -> tuple[str, str | None]:
     """
@@ -61,6 +52,13 @@ def parse_positive_int(value: str) -> int:
     return parsed
 
 
+def parse_non_empty_path(value: str) -> Path:
+    path = Path(value).expanduser()
+    if not str(path).strip():
+        raise argparse.ArgumentTypeError("路径不能为空。")
+    return path
+
+
 def parse_output_formats(format_args: list[str] | None) -> list[str]:
     if not format_args:
         return ["xlsx"]
@@ -77,28 +75,6 @@ def parse_output_formats(format_args: list[str] | None) -> list[str]:
         return ["xlsx"]
     # de-duplicate and keep order
     return list(dict.fromkeys(formats))
-
-
-def _build_search_task_results(
-    client: GitLabClient, project: Project, branch_ref: BranchRef, word: str
-) -> list[SearchResult]:
-    blobs = client.search_blobs(project_id=project.id, keyword=word, branch=branch_ref.search_ref)
-    results: list[SearchResult] = []
-    for blob in blobs:
-        results.append(
-            SearchResult(
-                word=word,
-                branch=branch_ref.name,
-                project_id=project.id,
-                project_name=project.name,
-                project_url=project.web_url,
-                file_name=blob.filename,
-                line_url=build_line_url(project.web_url, branch_ref.name, blob.filename, blob.startline),
-                data=blob.data,
-            )
-        )
-    return results
-
 
 def run_search(args: argparse.Namespace) -> int:
     words = parse_words(args.words)
@@ -118,118 +94,53 @@ def run_search(args: argparse.Namespace) -> int:
         logger.error(str(exc))
         return 2
 
-    client = GitLabClient(base_url=base_url, token=args.token)
-    if project_path:
-        try:
-            project = client.get_project_by_path(project_path)
-            projects = [project]
-        except Exception as exc:  # noqa: BLE001
-            logger.error("获取项目失败: %s", exc)
-            return 1
-        logger.info("已切换为单仓库模式: %s", project.web_url)
-    else:
-        try:
-            projects = client.list_projects()
-        except Exception as exc:  # noqa: BLE001
-            logger.error("获取所有项目失败: %s", exc)
-            return 1
-
-    logger.info("共获取到 %s 个项目，开始检索...", len(projects))
-
-    # Build task list first so we can run concurrent searches.
-    tasks: list[tuple[Project, BranchRef, str]] = []
-
-    for index, project in enumerate(projects, start=1):
-        logger.info("进度 %s/%s: %s", index, len(projects), project.name)
-        if args.all_branches:
-            try:
-                branch_refs = client.list_branches(project.id)
-            except Exception as exc:  # noqa: BLE001
-                logger.error("获取分支失败: project=%s err=%s", project.id, exc)
-                continue
-            if not branch_refs:
-                logger.warning("项目无可用分支，跳过: project=%s", project.id)
-                continue
-        else:
-            branch_name = args.branch or project.default_branch or "master"
-            branch_refs = [BranchRef(name=branch_name, search_ref=branch_name)]
-
-        for branch_ref in branch_refs:
-            for word in words:
-                tasks.append((project, branch_ref, word))
-
-    logger.info(
-        "共生成 %s 个检索任务，workers=%s，模式=%s",
-        len(tasks),
-        args.workers,
-        "all-branches" if args.all_branches else "default-branch",
-    )
-
-    all_results: list[SearchResult] = []
-    failed_tasks = 0
-    successful_tasks = 0
-
-    with ThreadPoolExecutor(max_workers=args.workers) as executor:
-        future_to_task = {
-            executor.submit(_build_search_task_results, client, project, branch_ref, word): (project, branch_ref, word)
-            for project, branch_ref, word in tasks
-        }
-        with tqdm(
-            total=len(tasks),
-            desc="检索进度",
-            unit="task",
-            dynamic_ncols=True,
-            disable=args.no_progress,
-            leave=True,
-        ) as progress:
-            for future in as_completed(future_to_task):
-                project, branch_ref, word = future_to_task[future]
-                try:
-                    results = future.result()
-                except Exception as exc:  # noqa: BLE001
-                    failed_tasks += 1
-                    logger.error(
-                        "搜索失败: project=%s branch=%s word=%s err=%s",
-                        project.id,
-                        branch_ref.name,
-                        word,
-                        exc,
-                    )
-                    progress.update(1)
-                    continue
-                successful_tasks += 1
-                if results:
-                    all_results.extend(results)
-                progress.update(1)
-
-    all_results.sort(
-        key=lambda item: (
-            item.project_id,
-            item.branch,
-            item.word,
-            item.file_name,
-            item.line_url,
-            item.data,
-        )
-    )
-
     try:
-        from .excel_writer import write_results
-
-        output_paths = write_results(all_results, formats=output_formats)
+        execution = execute_search(
+            SearchRequest(
+                base_url=base_url,
+                token=args.token,
+                words=words,
+                output_formats=output_formats,
+                branch=args.branch,
+                all_branches=args.all_branches,
+                workers=args.workers,
+                no_progress=args.no_progress,
+                project_path=project_path,
+            )
+        )
     except Exception as exc:  # noqa: BLE001
-        logger.error("将内容写入到导出文件失败: %s", exc)
+        logger.error("搜索失败: %s", exc)
         return 1
 
     logger.info(
         "搜索完成：任务成功=%s 失败=%s 命中=%s 导出格式=%s",
-        successful_tasks,
-        failed_tasks,
-        len(all_results),
+        execution.successful_tasks,
+        execution.failed_tasks,
+        len(execution.results),
         ",".join(output_formats),
     )
-    for output_path in output_paths:
+    for output_path in execution.output_paths:
         logger.info("结果文件: %s", output_path)
+    return 0
+
+
+def run_serve(args: argparse.Namespace) -> int:
+    try:
+        app = ServeApplication(
+            ServeConfig(
+                workdir=args.workdir,
+                admin_token=args.admin_token,
+                host=args.host,
+                port=args.port,
+                gitlab_url=args.gitlab_url,
+                workers=args.workers,
+            )
+        )
+    except StartupError as exc:
+        logger.error(str(exc))
+        return 2
+
+    app.serve_forever()
     return 0
 
 
@@ -284,6 +195,20 @@ def create_parser() -> argparse.ArgumentParser:
         help="导出格式，支持 xlsx,csv,json。可重复或逗号分隔；默认 xlsx。",
     )
     search_parser.set_defaults(func=run_search)
+
+    serve_parser = subparsers.add_parser("serve", help="启动本地 Web 服务。")
+    serve_parser.add_argument("--workdir", required=True, type=parse_non_empty_path, help="服务工作目录。")
+    serve_parser.add_argument("--admin-token", required=True, help="管理员 GitLab PAT。")
+    serve_parser.add_argument("--host", default="127.0.0.1", help="监听地址，默认 127.0.0.1。")
+    serve_parser.add_argument("--port", type=parse_positive_int, default=8765, help="监听端口，默认 8765。")
+    serve_parser.add_argument("--gitlab-url", help="默认 GitLab 地址。首次启动建议显式传入。")
+    serve_parser.add_argument(
+        "--workers",
+        type=parse_positive_int,
+        default=8,
+        help="后台搜索 worker 数量，默认 8。",
+    )
+    serve_parser.set_defaults(func=run_serve)
 
     return parser
 
