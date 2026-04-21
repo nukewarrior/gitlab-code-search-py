@@ -17,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-22.04
             target: linux-x86_64
             bin_name: gcs-linux-x86_64
             output_file: gcs-linux-x86_64
