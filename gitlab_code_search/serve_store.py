@@ -23,6 +23,14 @@ class SessionRecord:
     is_active: bool
 
 
+class ClosingConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback) -> None:
+        try:
+            super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
+
+
 class ServeStore:
     def __init__(self, workdir: str | Path) -> None:
         self.workdir = Path(workdir)
@@ -121,7 +129,7 @@ class ServeStore:
                 conn.execute("ALTER TABLE jobs ADD COLUMN branch_name TEXT")
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, factory=ClosingConnection)
         conn.row_factory = sqlite3.Row
         return conn
 
