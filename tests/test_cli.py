@@ -2,7 +2,7 @@ from urllib.parse import urlsplit
 import unittest
 from unittest.mock import patch
 
-from gitlab_code_search.cli import build_line_url, configure_stdio_encoding
+from gitlab_code_search.cli import build_line_url, configure_stdio_encoding, create_parser, parse_search_targets
 
 
 class FakeStream:
@@ -61,6 +61,35 @@ class BuildLineUrlTests(unittest.TestCase):
 
         parsed = urlsplit(url)
         self.assertIn("/nested/path/file.py", parsed.path)
+
+
+class ParseSearchTargetsTests(unittest.TestCase):
+    def test_parse_search_targets_defaults_to_code(self) -> None:
+        self.assertEqual(parse_search_targets(None), ["code"])
+
+    def test_parse_search_targets_accepts_repeated_and_comma_separated_values(self) -> None:
+        self.assertEqual(parse_search_targets(["code,commit", "commit"]), ["code", "commit"])
+
+    def test_parse_search_targets_rejects_unknown_target(self) -> None:
+        with self.assertRaises(ValueError):
+            parse_search_targets(["code,issue"])
+
+    def test_search_parser_accepts_target_argument(self) -> None:
+        parser = create_parser()
+        args = parser.parse_args(
+            [
+                "search",
+                "-u",
+                "https://gitlab.example.com",
+                "-t",
+                "token",
+                "-w",
+                "needle",
+                "--target",
+                "code,commit",
+            ]
+        )
+        self.assertEqual(args.target, ["code,commit"])
 
 
 if __name__ == "__main__":

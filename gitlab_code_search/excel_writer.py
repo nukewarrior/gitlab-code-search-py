@@ -20,6 +20,20 @@ OUTPUT_COLUMNS = [
     ("具体信息", "data"),
 ]
 
+EXTENDED_OUTPUT_COLUMNS = [
+    ("结果类型", "result_type"),
+    *OUTPUT_COLUMNS,
+    ("Commit SHA", "commit_id"),
+    ("Commit 短 SHA", "commit_short_id"),
+    ("Commit 标题", "commit_title"),
+    ("Commit 作者", "commit_author_name"),
+    ("Commit 作者邮箱", "commit_author_email"),
+    ("Commit authored date", "commit_authored_date"),
+    ("Commit committed date", "commit_committed_date"),
+    ("Commit 地址", "commit_url"),
+    ("Commit Message", "commit_message"),
+]
+
 
 def build_output_basename() -> str:
     return datetime.now().strftime("%Y_%m_%d_%H_%M_%S")
@@ -46,12 +60,18 @@ def _resolve_available_base_name(
     return candidate
 
 
-def _result_to_row(result: SearchResult) -> list[object]:
-    return [getattr(result, field_name) for _, field_name in OUTPUT_COLUMNS]
+def _columns_for_results(results: list[SearchResult]) -> list[tuple[str, str]]:
+    if any(result.result_type == "commit" for result in results):
+        return EXTENDED_OUTPUT_COLUMNS
+    return OUTPUT_COLUMNS
 
 
-def _result_to_dict(result: SearchResult) -> dict[str, object]:
-    return {header: getattr(result, field_name) for header, field_name in OUTPUT_COLUMNS}
+def _result_to_row(result: SearchResult, columns: list[tuple[str, str]]) -> list[object]:
+    return [getattr(result, field_name) for _, field_name in columns]
+
+
+def _result_to_dict(result: SearchResult, columns: list[tuple[str, str]]) -> dict[str, object]:
+    return {header: getattr(result, field_name) for header, field_name in columns}
 
 
 def write_results_xlsx(results: list[SearchResult], output_dir: str | Path = ".", base_name: str | None = None) -> Path:
@@ -62,11 +82,12 @@ def write_results_xlsx(results: list[SearchResult], output_dir: str | Path = "."
     sheet = workbook.active
     sheet.title = "Sheet1"
 
-    headers = [header for header, _ in OUTPUT_COLUMNS]
+    columns = _columns_for_results(results)
+    headers = [header for header, _ in columns]
     sheet.append(headers)
 
     for result in results:
-        sheet.append(_result_to_row(result))
+        sheet.append(_result_to_row(result, columns))
 
     workbook.save(output_path)
     return output_path
@@ -78,9 +99,10 @@ def write_results_csv(results: list[SearchResult], output_dir: str | Path = ".",
 
     with output_path.open("w", newline="", encoding="utf-8") as fp:
         writer = csv.writer(fp)
-        writer.writerow([header for header, _ in OUTPUT_COLUMNS])
+        columns = _columns_for_results(results)
+        writer.writerow([header for header, _ in columns])
         for result in results:
-            writer.writerow(_result_to_row(result))
+            writer.writerow(_result_to_row(result, columns))
     return output_path
 
 
@@ -88,7 +110,8 @@ def write_results_json(results: list[SearchResult], output_dir: str | Path = "."
     base_name = _resolve_available_base_name(output_dir, base_name or build_output_basename(), ["json"])
     output_path = _build_output_path(output_dir, base_name, "json")
 
-    data = [_result_to_dict(result) for result in results]
+    columns = _columns_for_results(results)
+    data = [_result_to_dict(result, columns) for result in results]
     with output_path.open("w", encoding="utf-8") as fp:
         json.dump(data, fp, ensure_ascii=False, indent=2)
     return output_path

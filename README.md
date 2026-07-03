@@ -152,7 +152,18 @@
 .venv/bin/gcs search -u 'https://gitlab.example.com' -t 'your_token' -w 'a,b' -w 'c'
 ```
 
-### 7) 多格式导出
+### 7) 搜索 Commit Message
+
+默认只搜索代码内容。可以通过 `--target commit` 搜索 Git commit message；也可以同时搜索代码内容和 commit message：
+
+```bash
+.venv/bin/gcs search -u 'https://gitlab.example.com' -t 'your_token' -w 'businessSearch' --target commit
+.venv/bin/gcs search -u 'https://gitlab.example.com' -t 'your_token' -w 'businessSearch' --target code,commit
+```
+
+Commit Message 搜索会遵守默认分支、指定分支、全部分支这些分支范围。大仓库或 `--all-branches` 场景可能更慢，因为工具需要按分支拉取提交历史并在本地过滤 message。
+
+### 8) 多格式导出
 
 默认（不传 `--format`，仅导出 xlsx）：
 
@@ -186,6 +197,7 @@
   - `YYYY_MM_DD_HH_MM.csv`
   - `YYYY_MM_DD_HH_MM.json`
 - 表头/字段顺序保持一致：关键字、分支、项目信息、文件名、代码链接、命中内容
+- 纯代码搜索保持旧表头；如果结果中包含 commit message 命中，会额外导出结果类型和 commit 元数据字段
 
 ![搜索结果截图](assets/search_ouput.png)
 

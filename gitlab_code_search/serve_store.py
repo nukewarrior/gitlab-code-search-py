@@ -72,6 +72,7 @@ class ServeStore:
                     gitlab_url TEXT NOT NULL,
                     project_ids_json TEXT NOT NULL,
                     keywords_json TEXT NOT NULL,
+                    targets_json TEXT NOT NULL DEFAULT '["code"]',
                     branch_mode TEXT NOT NULL,
                     branch_name TEXT,
                     formats_json TEXT NOT NULL,
@@ -89,6 +90,7 @@ class ServeStore:
                 CREATE TABLE IF NOT EXISTS job_results (
                     job_id TEXT NOT NULL,
                     row_index INTEGER NOT NULL,
+                    result_type TEXT NOT NULL DEFAULT 'code',
                     word TEXT NOT NULL,
                     branch TEXT NOT NULL,
                     project_id INTEGER NOT NULL,
@@ -97,6 +99,15 @@ class ServeStore:
                     file_name TEXT NOT NULL,
                     line_url TEXT NOT NULL,
                     data TEXT NOT NULL,
+                    commit_id TEXT,
+                    commit_short_id TEXT,
+                    commit_title TEXT,
+                    commit_author_name TEXT,
+                    commit_author_email TEXT,
+                    commit_authored_date TEXT,
+                    commit_committed_date TEXT,
+                    commit_url TEXT,
+                    commit_message TEXT,
                     PRIMARY KEY(job_id, row_index)
                 );
 
@@ -127,6 +138,28 @@ class ServeStore:
             }
             if "branch_name" not in existing_columns:
                 conn.execute("ALTER TABLE jobs ADD COLUMN branch_name TEXT")
+            if "targets_json" not in existing_columns:
+                conn.execute("ALTER TABLE jobs ADD COLUMN targets_json TEXT NOT NULL DEFAULT '[\"code\"]'")
+
+            result_columns = {
+                row["name"]
+                for row in conn.execute("PRAGMA table_info(job_results)").fetchall()
+            }
+            result_migrations = {
+                "result_type": "ALTER TABLE job_results ADD COLUMN result_type TEXT NOT NULL DEFAULT 'code'",
+                "commit_id": "ALTER TABLE job_results ADD COLUMN commit_id TEXT",
+                "commit_short_id": "ALTER TABLE job_results ADD COLUMN commit_short_id TEXT",
+                "commit_title": "ALTER TABLE job_results ADD COLUMN commit_title TEXT",
+                "commit_author_name": "ALTER TABLE job_results ADD COLUMN commit_author_name TEXT",
+                "commit_author_email": "ALTER TABLE job_results ADD COLUMN commit_author_email TEXT",
+                "commit_authored_date": "ALTER TABLE job_results ADD COLUMN commit_authored_date TEXT",
+                "commit_committed_date": "ALTER TABLE job_results ADD COLUMN commit_committed_date TEXT",
+                "commit_url": "ALTER TABLE job_results ADD COLUMN commit_url TEXT",
+                "commit_message": "ALTER TABLE job_results ADD COLUMN commit_message TEXT",
+            }
+            for column, sql in result_migrations.items():
+                if column not in result_columns:
+                    conn.execute(sql)
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, factory=ClosingConnection)
@@ -262,10 +295,10 @@ class ServeStore:
             conn.execute(
                 """
                 INSERT INTO jobs(
-                    id, owner_identity, gitlab_url, project_ids_json, keywords_json, branch_mode, branch_name, formats_json,
+                    id, owner_identity, gitlab_url, project_ids_json, keywords_json, targets_json, branch_mode, branch_name, formats_json,
                     status, progress, export_base_name, export_paths_json, created_at, started_at, finished_at,
                     failure_reason, original_job_id
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     record["id"],
@@ -273,6 +306,7 @@ class ServeStore:
                     record["gitlab_url"],
                     json.dumps(record["project_ids"]),
                     json.dumps(record["keywords"]),
+                    json.dumps(record.get("targets", ["code"])),
                     record["branch_mode"],
                     record.get("branch_name"),
                     json.dumps(record["formats"]),
@@ -294,7 +328,7 @@ class ServeStore:
         assignments = []
         values: list[Any] = []
         for key, value in fields.items():
-            if key in {"project_ids", "keywords", "formats", "export_paths"}:
+            if key in {"project_ids", "keywords", "targets", "formats", "export_paths"}:
                 key = f"{key}_json"
                 value = json.dumps(value)
             assignments.append(f"{key} = ?")
@@ -341,13 +375,16 @@ class ServeStore:
             conn.executemany(
                 """
                 INSERT OR REPLACE INTO job_results(
-                    job_id, row_index, word, branch, project_id, project_name, project_url, file_name, line_url, data
-                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    job_id, row_index, result_type, word, branch, project_id, project_name, project_url, file_name, line_url,
+                    data, commit_id, commit_short_id, commit_title, commit_author_name, commit_author_email,
+                    commit_authored_date, commit_committed_date, commit_url, commit_message
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 [
                     (
                         job_id,
                         index,
+                        row.get("result_type", "code"),
                         row["word"],
                         row["branch"],
                         row["project_id"],
@@ -356,6 +393,15 @@ class ServeStore:
                         row["file_name"],
                         row["line_url"],
                         row["data"],
+                        row.get("commit_id"),
+                        row.get("commit_short_id"),
+                        row.get("commit_title"),
+                        row.get("commit_author_name"),
+                        row.get("commit_author_email"),
+                        row.get("commit_authored_date"),
+                        row.get("commit_committed_date"),
+                        row.get("commit_url"),
+                        row.get("commit_message"),
                     )
                     for index, row in enumerate(rows)
                 ],
@@ -367,9 +413,11 @@ class ServeStore:
         if query:
             like = f"%{query}%"
             sql += (
-                " AND (word LIKE ? OR branch LIKE ? OR project_name LIKE ? OR file_name LIKE ? OR data LIKE ? OR line_url LIKE ?)"
+                " AND (result_type LIKE ? OR word LIKE ? OR branch LIKE ? OR project_name LIKE ? OR file_name LIKE ?"
+                " OR data LIKE ? OR line_url LIKE ? OR commit_id LIKE ? OR commit_short_id LIKE ? OR commit_title LIKE ?"
+                " OR commit_author_name LIKE ? OR commit_author_email LIKE ? OR commit_message LIKE ?)"
             )
-            params.extend([like, like, like, like, like, like])
+            params.extend([like] * 13)
         sql += " ORDER BY row_index"
         with self._connect() as conn:
             rows = conn.execute(sql, params).fetchall()
@@ -388,9 +436,11 @@ class ServeStore:
         if query:
             like = f"%{query}%"
             where_sql += (
-                " AND (word LIKE ? OR branch LIKE ? OR project_name LIKE ? OR file_name LIKE ? OR data LIKE ? OR line_url LIKE ?)"
+                " AND (result_type LIKE ? OR word LIKE ? OR branch LIKE ? OR project_name LIKE ? OR file_name LIKE ?"
+                " OR data LIKE ? OR line_url LIKE ? OR commit_id LIKE ? OR commit_short_id LIKE ? OR commit_title LIKE ?"
+                " OR commit_author_name LIKE ? OR commit_author_email LIKE ? OR commit_message LIKE ?)"
             )
-            params.extend([like, like, like, like, like, like])
+            params.extend([like] * 13)
         count_sql = f"SELECT COUNT(*) FROM job_results WHERE {where_sql}"
         rows_sql = f"SELECT * FROM job_results WHERE {where_sql} ORDER BY row_index LIMIT ? OFFSET ?"
         with self._connect() as conn:
@@ -450,6 +500,7 @@ class ServeStore:
             "gitlab_url": str(row["gitlab_url"]),
             "project_ids": json.loads(row["project_ids_json"]),
             "keywords": json.loads(row["keywords_json"]),
+            "targets": json.loads(row["targets_json"]) if "targets_json" in row.keys() else ["code"],
             "branch_mode": str(row["branch_mode"]),
             "branch_name": row["branch_name"],
             "formats": json.loads(row["formats_json"]),

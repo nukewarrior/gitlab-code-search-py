@@ -559,6 +559,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
         keywords: '',
         branchMode: 'all',
         branchName: 'main',
+        targets: ['code'],
         formats: ['xlsx', 'csv', 'json'],
         projects: [],
         projectQuery: '',
@@ -594,6 +595,19 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       if (mode === 'default') return '默认分支';
       return mode || '';
     }
+    function targetLabel(target) {
+      if (target === 'code') return '代码内容';
+      if (target === 'commit') return 'Commit Message';
+      return target || '';
+    }
+    function targetLabels(targets) {
+      const list = targets && targets.length ? targets : ['code'];
+      return list.map(targetLabel).join(' / ');
+    }
+    function resultTypeLabel(type) {
+      if (type === 'commit') return 'Commit';
+      return '代码';
+    }
     function statusCount(statuses) {
       return state.jobs.filter((job) => statuses.includes(job.status)).length;
     }
@@ -616,6 +630,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       lines.push('[status] ' + (job.status || 'unknown'));
       lines.push('[scope] ' + projectScopeLabel(job.project_ids || []));
       lines.push('[branch] ' + (job.branch_mode || 'default') + (job.branch_name ? ' / ' + job.branch_name : ''));
+      lines.push('[targets] ' + targetLabels(job.targets || ['code']));
       lines.push('[formats] ' + (job.formats || []).join(', '));
       if (job.created_at) lines.push('[created] ' + job.created_at);
       if (job.started_at) lines.push('[started] ' + job.started_at);
@@ -635,6 +650,24 @@ def build_app_html(default_gitlab_url: str = "") -> str:
         .map((segment) => encodeURIComponent(segment))
         .join('/');
       return baseUrl + '/-/tree/' + branchPath;
+    }
+    function resultOpenUrl(row) {
+      if (!row) return '';
+      if (row.result_type === 'commit') return row.commit_url || row.line_url || '';
+      return row.line_url || '';
+    }
+    function resultOpenLabel(row) {
+      return row && row.result_type === 'commit' ? '打开 Commit' : '打开代码';
+    }
+    function resultLocationLabel(row) {
+      if (!row) return '';
+      if (row.result_type === 'commit') return row.commit_short_id || row.commit_id || '';
+      return row.file_name || '';
+    }
+    function resultContentLabel(row) {
+      if (!row) return '';
+      if (row.result_type === 'commit') return row.commit_message || row.data || '';
+      return row.data || '';
     }
     function resultRoute(jobId) {
       return '/#result/' + encodeURIComponent(jobId);
@@ -777,6 +810,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     async function createJob() {
       captureInputs();
       if (!state.search.keywords.trim()) { toast('请先输入至少一个关键字'); return; }
+      if (!state.search.targets.length) { toast('请至少选择一个搜索目标'); return; }
       if (!state.search.formats.length) { toast('请至少选择一种导出格式'); return; }
       if (!state.search.gitlabUrl.trim()) { toast('请填写 GitLab 地址'); return; }
       if (state.search.branchMode === 'specific' && !state.search.branchName.trim()) { toast('指定分支模式下必须填写分支名'); return; }
@@ -784,6 +818,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
         await api('/api/jobs', { method: 'POST', body: JSON.stringify({
           gitlab_url: state.search.gitlabUrl,
           keywords: state.search.keywords,
+          targets: state.search.targets,
           branch_mode: state.search.branchMode,
           branch_name: state.search.branchMode === 'specific' ? state.search.branchName : '',
           formats: state.search.formats,
@@ -865,6 +900,12 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       const set = new Set(state.search.formats);
       set.has(format) ? set.delete(format) : set.add(format);
       state.search.formats = [...set];
+      render();
+    }
+    function toggleTarget(target) {
+      const set = new Set(state.search.targets);
+      set.has(target) ? set.delete(target) : set.add(target);
+      state.search.targets = [...set];
       render();
     }
     function toggleProject(id) {
@@ -978,6 +1019,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
           <div class="stat-strip">
             <div class="stat-card"><div class="metric-label">关键词</div><strong>${keywords.length}</strong><span>当前草稿中待检索的关键字数量。</span></div>
             <div class="stat-card"><div class="metric-label">项目范围</div><strong>${selected.length || 'ALL'}</strong><span>${selected.length ? '已显式圈定项目范围。' : '未选择项目时默认搜索可见项目。'}</span></div>
+            <div class="stat-card"><div class="metric-label">搜索目标</div><strong>${state.search.targets.length}</strong><span>${esc(targetLabels(state.search.targets))}</span></div>
             <div class="stat-card"><div class="metric-label">导出格式</div><strong>${state.search.formats.length}</strong><span>${esc(state.search.formats.join(' / ').toUpperCase())}</span></div>
             <div class="stat-card"><div class="metric-label">当前队列</div><strong>${activeJobs().length}</strong><span>搜索任务异步执行，不阻塞当前页面。</span></div>
           </div>
@@ -1015,6 +1057,13 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                     <input class="input" id="branch-name" value="${esc(state.search.branchName)}" placeholder="例如 release/2026-q2" />
                   </div>
                 ` : ''}
+                <div class="field" style="margin-top:0;">
+                  <span class="label">搜索目标</span>
+                  <div class="row">
+                    <button type="button" class="chip ${state.search.targets.includes('code') ? 'active' : ''}" onclick="toggleTarget('code')">代码内容</button>
+                    <button type="button" class="chip ${state.search.targets.includes('commit') ? 'active' : ''}" onclick="toggleTarget('commit')">Commit Message</button>
+                  </div>
+                </div>
                 <div class="field" style="margin-top:0;">
                   <span class="label">导出格式</span>
                   <div class="row">
@@ -1061,7 +1110,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                     <div class="section-copy">查看最近任务和当前进展。</div>
                   </div>
                 </div>
-                ${active ? `<div class="task-card active"><div class="row">${statusBadge(active.status)}<span class="metric-pill">${esc(active.id)}</span>${active.status === 'completed' ? `<span class="chip active">命中 ${esc(active.result_count || 0)}</span>` : ''}</div><strong>${esc(projectScopeLabel(active.project_ids || []))}</strong><small>分支：${esc(branchModeLabel(active.branch_mode))} ｜ 导出：${esc((active.formats || []).join(', '))}</small><div class="progress"><span style="width:${active.progress || 0}%"></span></div></div>` : '<div class="empty-card" style="min-height:140px;">当前没有活动任务。</div>'}
+                ${active ? `<div class="task-card active"><div class="row">${statusBadge(active.status)}<span class="metric-pill">${esc(active.id)}</span>${active.status === 'completed' ? `<span class="chip active">命中 ${esc(active.result_count || 0)}</span>` : ''}</div><strong>${esc(projectScopeLabel(active.project_ids || []))}</strong><small>目标：${esc(targetLabels(active.targets || ['code']))} ｜ 分支：${esc(branchModeLabel(active.branch_mode))} ｜ 导出：${esc((active.formats || []).join(', '))}</small><div class="progress"><span style="width:${active.progress || 0}%"></span></div></div>` : '<div class="empty-card" style="min-height:140px;">当前没有活动任务。</div>'}
                 <div class="task-list">
                   ${previewJobs.length
                     ? previewJobs.map((job) => `<button type="button" class="task-card ${active && job.id === active.id ? 'active' : ''}" onclick="${job.status === 'completed' ? `openResult('${job.id}')` : `setView('tasks')`}"><div class="row">${statusBadge(job.status)}<span class="metric-pill">${esc(job.created_at || '')}</span>${job.status === 'completed' ? `<span class="chip active">命中 ${esc(job.result_count || 0)}</span>` : ''}</div><strong>${esc(job.id)}</strong><small>${esc(projectScopeLabel(job.project_ids || []))} ｜ 关键字 ${(job.keywords || []).length} 个</small></button>`).join('')
@@ -1096,10 +1145,10 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                   <span class="metric-pill">只显示当前用户自己的任务</span>
                 </div>
               </div>
-              ${active ? `<div class="task-card active" style="margin-top:14px;"><div class="row">${statusBadge(active.status)}<span class="metric-pill">${esc(active.id)}</span>${active.status === 'completed' ? `<span class="chip active">命中 ${esc(active.result_count || 0)}</span>` : ''}</div><strong>${esc(projectScopeLabel(active.project_ids || []))}</strong><small>关键字：${esc((active.keywords || []).join(', '))} ｜ 分支：${esc(branchModeLabel(active.branch_mode))} ｜ 导出：${esc((active.formats || []).join(', '))}</small><div class="progress"><span style="width:${active.progress || 0}%"></span></div><div class="action-row">${active.status === 'completed' ? `<button type="button" class="btn primary" onclick="openResult('${active.id}')">打开结果</button>` : ['interrupted','failed','cancelled'].includes(active.status) ? `<button type="button" class="btn secondary" onclick="rerunJob('${active.id}')">重新跑</button>` : `<button type="button" class="btn warn" onclick="cancelJob('${active.id}')">取消任务</button>`}<button type="button" class="btn ghost" onclick="setView('search')">返回搜索页</button></div></div>` : ''}
+              ${active ? `<div class="task-card active" style="margin-top:14px;"><div class="row">${statusBadge(active.status)}<span class="metric-pill">${esc(active.id)}</span>${active.status === 'completed' ? `<span class="chip active">命中 ${esc(active.result_count || 0)}</span>` : ''}</div><strong>${esc(projectScopeLabel(active.project_ids || []))}</strong><small>关键字：${esc((active.keywords || []).join(', '))} ｜ 目标：${esc(targetLabels(active.targets || ['code']))} ｜ 分支：${esc(branchModeLabel(active.branch_mode))} ｜ 导出：${esc((active.formats || []).join(', '))}</small><div class="progress"><span style="width:${active.progress || 0}%"></span></div><div class="action-row">${active.status === 'completed' ? `<button type="button" class="btn primary" onclick="openResult('${active.id}')">打开结果</button>` : ['interrupted','failed','cancelled'].includes(active.status) ? `<button type="button" class="btn secondary" onclick="rerunJob('${active.id}')">重新跑</button>` : `<button type="button" class="btn warn" onclick="cancelJob('${active.id}')">取消任务</button>`}<button type="button" class="btn ghost" onclick="setView('search')">返回搜索页</button></div></div>` : ''}
               <div class="task-list" style="margin-top:14px;">
                 ${remainingJobs.length
-                  ? remainingJobs.map((job) => `<div class="task-card"><div class="row">${statusBadge(job.status)}<span class="metric-pill">${esc(job.created_at || '')}</span>${job.status === 'completed' ? `<span class="chip active">命中 ${esc(job.result_count || 0)}</span>` : ''}</div><strong>${esc(job.id)}</strong><small>${esc(projectScopeLabel(job.project_ids || []))}</small><div class="row"><span class="chip">${esc(branchModeLabel(job.branch_mode))}</span><span class="chip">${esc((job.formats || []).join(', '))}</span></div><div class="progress"><span style="width:${job.progress || 0}%"></span></div><div class="action-row">${job.status === 'completed' ? `<button type="button" class="btn secondary" onclick="openResult('${job.id}')">查看结果</button>` : ['interrupted','failed','cancelled'].includes(job.status) ? `<button type="button" class="btn secondary" onclick="rerunJob('${job.id}')">重新跑</button>` : `<button type="button" class="btn ghost" onclick="cancelJob('${job.id}')">取消</button>`}</div></div>`).join('')
+                  ? remainingJobs.map((job) => `<div class="task-card"><div class="row">${statusBadge(job.status)}<span class="metric-pill">${esc(job.created_at || '')}</span>${job.status === 'completed' ? `<span class="chip active">命中 ${esc(job.result_count || 0)}</span>` : ''}</div><strong>${esc(job.id)}</strong><small>${esc(projectScopeLabel(job.project_ids || []))}</small><div class="row"><span class="chip">${esc(targetLabels(job.targets || ['code']))}</span><span class="chip">${esc(branchModeLabel(job.branch_mode))}</span><span class="chip">${esc((job.formats || []).join(', '))}</span></div><div class="progress"><span style="width:${job.progress || 0}%"></span></div><div class="action-row">${job.status === 'completed' ? `<button type="button" class="btn secondary" onclick="openResult('${job.id}')">查看结果</button>` : ['interrupted','failed','cancelled'].includes(job.status) ? `<button type="button" class="btn secondary" onclick="rerunJob('${job.id}')">重新跑</button>` : `<button type="button" class="btn ghost" onclick="cancelJob('${job.id}')">取消</button>`}</div></div>`).join('')
                   : '<div class="empty-card" style="min-height:180px;">当前没有其他任务。</div>'}
               </div>
             </section>
@@ -1144,7 +1193,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
               </div>
             </div>
             <div class="result-grid" style="margin-top:16px;">
-              ${filtered.map((job) => `<button type="button" class="result-card ${state.resultTask && state.resultTask.id === job.id ? 'active' : ''}" onclick="openResult('${job.id}')"><div class="row">${statusBadge(job.status)}<span class="metric-pill">${esc(job.created_at || '')}</span></div><strong>${esc(job.id)}</strong><small>项目范围：${esc(projectScopeLabel(job.project_ids || []))}</small><div class="result-metrics"><span class="chip active">关键字 ${(job.keywords || []).length}</span><span class="chip">命中 ${esc(job.result_count || 0)}</span><span class="chip">${esc(branchModeLabel(job.branch_mode))}</span></div><small>${esc((job.keywords || []).join(', '))}</small></button>`).join('')}
+              ${filtered.map((job) => `<button type="button" class="result-card ${state.resultTask && state.resultTask.id === job.id ? 'active' : ''}" onclick="openResult('${job.id}')"><div class="row">${statusBadge(job.status)}<span class="metric-pill">${esc(job.created_at || '')}</span></div><strong>${esc(job.id)}</strong><small>项目范围：${esc(projectScopeLabel(job.project_ids || []))}</small><div class="result-metrics"><span class="chip active">关键字 ${(job.keywords || []).length}</span><span class="chip">命中 ${esc(job.result_count || 0)}</span><span class="chip">${esc(targetLabels(job.targets || ['code']))}</span><span class="chip">${esc(branchModeLabel(job.branch_mode))}</span></div><small>${esc((job.keywords || []).join(', '))}</small></button>`).join('')}
             </div>
             ${filtered.length ? '' : '<div class="empty-card" style="margin-top:16px;">当前过滤条件下没有匹配的结果批次。</div>'}
           </section>
@@ -1180,6 +1229,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                 <div class="summary-grid">
                   <div class="summary-card"><div class="metric-label">项目范围</div><strong>${state.resultTask.project_ids && state.resultTask.project_ids.length ? state.resultTask.project_ids.length : 'ALL'}</strong></div>
                   <div class="summary-card"><div class="metric-label">关键字</div><strong>${(state.resultTask.keywords || []).length}</strong></div>
+                  <div class="summary-card"><div class="metric-label">搜索目标</div><strong>${esc(targetLabels(state.resultTask.targets || ['code']))}</strong></div>
                   <div class="summary-card"><div class="metric-label">命中行</div><strong>${esc(state.resultTask.result_count || 0)}</strong></div>
                   <div class="summary-card"><div class="metric-label">分支模式</div><strong>${esc(branchModeLabel(state.resultTask.branch_mode))}</strong></div>
                 </div>
@@ -1188,6 +1238,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                 <div class="toolbar-row">
                   <span class="metric-pill">项目范围：${esc(projectScopeLabel(state.resultTask.project_ids || []))}</span>
                   <span class="metric-pill">关键字：${esc((state.resultTask.keywords || []).join(', '))}</span>
+                  <span class="metric-pill">目标：${esc(targetLabels(state.resultTask.targets || ['code']))}</span>
                   <span class="metric-pill">GitLab：${esc(state.resultTask.gitlab_url || '')}</span>
                 </div>
                 <div class="toolbar-row">
@@ -1195,7 +1246,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                 </div>
                 <div class="field" style="margin-top:0;">
                   <span class="label">结果内过滤</span>
-                  <input class="input" id="result-filter" value="${esc(state.resultFilter)}" placeholder="按关键字、分支、文件名、行号或命中内容过滤" />
+                  <input class="input" id="result-filter" value="${esc(state.resultFilter)}" placeholder="按类型、关键字、分支、文件、commit、作者或命中内容过滤" />
                 </div>
                 <div class="toolbar-row">
                   <span class="metric-pill">当前第 ${esc(state.resultPage)} / ${esc(state.resultTotalPages)} 页</span>
@@ -1214,17 +1265,18 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                   <thead>
                     <tr>
                       <th>关键字</th>
+                      <th>类型</th>
                       <th>分支</th>
                       <th>项目</th>
-                      <th>文件</th>
-                      <th>代码链接</th>
+                      <th>位置</th>
+                      <th>打开</th>
                       <th>命中内容</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${state.resultRows.length
-                      ? state.resultRows.map((row) => `<tr><td>${esc(row.word)}</td><td>${esc(row.branch)}</td><td>${projectBranchUrl(row) ? `<a href="${esc(projectBranchUrl(row))}" target="_blank" rel="noreferrer" style="color: var(--accent-strong); font-weight: 700;">${esc(row.project_name)}</a>` : esc(row.project_name)}</td><td>${esc(row.file_name)}</td><td><a href="${esc(row.line_url)}" target="_blank" rel="noreferrer" style="color: var(--accent-strong); font-weight: 700;">打开代码</a></td><td>${esc(row.data)}</td></tr>`).join('')
-                      : '<tr><td colspan="6" style="text-align:center; color:#6b6c72;">当前过滤条件下没有匹配结果。</td></tr>'}
+                      ? state.resultRows.map((row) => `<tr><td>${esc(row.word)}</td><td><span class="chip">${esc(resultTypeLabel(row.result_type))}</span></td><td>${esc(row.branch)}</td><td>${projectBranchUrl(row) ? `<a href="${esc(projectBranchUrl(row))}" target="_blank" rel="noreferrer" style="color: var(--accent-strong); font-weight: 700;">${esc(row.project_name)}</a>` : esc(row.project_name)}</td><td>${esc(resultLocationLabel(row))}</td><td>${resultOpenUrl(row) ? `<a href="${esc(resultOpenUrl(row))}" target="_blank" rel="noreferrer" style="color: var(--accent-strong); font-weight: 700;">${esc(resultOpenLabel(row))}</a>` : ''}</td><td>${esc(resultContentLabel(row))}</td></tr>`).join('')
+                      : '<tr><td colspan="7" style="text-align:center; color:#6b6c72;">当前过滤条件下没有匹配结果。</td></tr>'}
                   </tbody>
                 </table>
               </div>
@@ -1443,6 +1495,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     window.setResultPage = setResultPage;
     window.setBranchMode = setBranchMode;
     window.toggleFormat = toggleFormat;
+    window.toggleTarget = toggleTarget;
     window.toggleProject = toggleProject;
     window.clearProjects = clearProjects;
     window.createJob = createJob;

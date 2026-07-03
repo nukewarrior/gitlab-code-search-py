@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import requests
 
-from .models import AuthenticatedUser, BlobSearchResult, BranchRef, Project
+from .models import AuthenticatedUser, BlobSearchResult, BranchRef, CommitSearchResult, Project
 
 
 class GitLabClient:
@@ -78,6 +78,27 @@ class GitLabClient:
                     filename=str(item.get("filename", "")),
                     startline=startline_int,
                     data=str(item.get("data", "")),
+                )
+            )
+        return results
+
+    def list_commits(self, project_id: int, ref_name: str) -> list[CommitSearchResult]:
+        params = {"ref_name": ref_name}
+        items = self._get_paginated(f"/projects/{project_id}/repository/commits", params=params)
+        results: list[CommitSearchResult] = []
+        for item in items:
+            commit_id = str(item.get("id", ""))
+            results.append(
+                CommitSearchResult(
+                    commit_id=commit_id,
+                    short_id=str(item.get("short_id", "")),
+                    title=str(item.get("title", "")),
+                    author_name=str(item.get("author_name", "")),
+                    author_email=str(item.get("author_email", "")),
+                    authored_date=str(item.get("authored_date", "")),
+                    committed_date=str(item.get("committed_date", "")),
+                    web_url=str(item.get("web_url", "")),
+                    message=str(item.get("message", "")),
                 )
             )
         return results

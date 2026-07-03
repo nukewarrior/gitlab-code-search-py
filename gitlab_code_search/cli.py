@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 
 from . import __version__
 from .serve import ServeApplication, ServeConfig, StartupError
-from .search_service import SearchRequest, build_line_url, execute_search
+from .search_service import SUPPORTED_SEARCH_TARGETS, SearchRequest, build_line_url, execute_search, normalize_search_targets
 
 
 logger = logging.getLogger("gcs")
@@ -89,6 +89,23 @@ def parse_output_formats(format_args: list[str] | None) -> list[str]:
     # de-duplicate and keep order
     return list(dict.fromkeys(formats))
 
+
+def parse_search_targets(target_args: list[str] | None) -> list[str]:
+    if not target_args:
+        return ["code"]
+    targets: list[str] = []
+    for raw in target_args:
+        for part in raw.split(","):
+            target = part.strip().lower()
+            if target:
+                targets.append(target)
+    try:
+        return normalize_search_targets(targets)
+    except ValueError as exc:
+        supported = ",".join(SUPPORTED_SEARCH_TARGETS)
+        raise ValueError(f"不支持的搜索目标: {str(exc).rsplit(': ', 1)[-1]}，支持: {supported}") from exc
+
+
 def run_search(args: argparse.Namespace) -> int:
     words = parse_words(args.words)
     if not words:
@@ -108,12 +125,19 @@ def run_search(args: argparse.Namespace) -> int:
         return 2
 
     try:
+        targets = parse_search_targets(args.target)
+    except ValueError as exc:
+        logger.error(str(exc))
+        return 2
+
+    try:
         execution = execute_search(
             SearchRequest(
                 base_url=base_url,
                 token=args.token,
                 words=words,
                 output_formats=output_formats,
+                targets=targets,
                 branch=args.branch,
                 all_branches=args.all_branches,
                 workers=args.workers,
@@ -206,6 +230,11 @@ def create_parser() -> argparse.ArgumentParser:
         "--format",
         action="append",
         help="导出格式，支持 xlsx,csv,json。可重复或逗号分隔；默认 xlsx。",
+    )
+    search_parser.add_argument(
+        "--target",
+        action="append",
+        help="搜索目标，支持 code,commit。可重复或逗号分隔；默认 code。",
     )
     search_parser.set_defaults(func=run_search)
 

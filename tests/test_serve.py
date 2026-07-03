@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import sqlite3
 from pathlib import Path
 from unittest.mock import patch
 
@@ -68,6 +69,75 @@ class ServeBootstrapTests(unittest.TestCase):
                     ).fetchall()
                 }
             self.assertIn("credentials", tables)
+
+    def test_store_initialization_migrates_legacy_search_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "gcs.sqlite3"
+            with sqlite3.connect(db_path) as conn:
+                conn.executescript(
+                    """
+                    CREATE TABLE jobs (
+                        id TEXT PRIMARY KEY,
+                        owner_identity TEXT NOT NULL,
+                        gitlab_url TEXT NOT NULL,
+                        project_ids_json TEXT NOT NULL,
+                        keywords_json TEXT NOT NULL,
+                        branch_mode TEXT NOT NULL,
+                        formats_json TEXT NOT NULL,
+                        status TEXT NOT NULL,
+                        progress INTEGER NOT NULL DEFAULT 0,
+                        export_base_name TEXT,
+                        export_paths_json TEXT NOT NULL DEFAULT '[]',
+                        created_at TEXT NOT NULL,
+                        started_at TEXT,
+                        finished_at TEXT,
+                        failure_reason TEXT,
+                        original_job_id TEXT
+                    );
+
+                    CREATE TABLE job_results (
+                        job_id TEXT NOT NULL,
+                        row_index INTEGER NOT NULL,
+                        word TEXT NOT NULL,
+                        branch TEXT NOT NULL,
+                        project_id INTEGER NOT NULL,
+                        project_name TEXT NOT NULL,
+                        project_url TEXT NOT NULL,
+                        file_name TEXT NOT NULL,
+                        line_url TEXT NOT NULL,
+                        data TEXT NOT NULL,
+                        PRIMARY KEY(job_id, row_index)
+                    );
+
+                    INSERT INTO jobs(
+                        id, owner_identity, gitlab_url, project_ids_json, keywords_json, branch_mode, formats_json,
+                        status, progress, export_base_name, export_paths_json, created_at, started_at, finished_at,
+                        failure_reason, original_job_id
+                    ) VALUES(
+                        'legacy-job', 'user-1', 'https://gitlab.example.com', '[]', '["foo"]', 'default', '["xlsx"]',
+                        'completed', 100, NULL, '[]', '2026-01-01T00:00:00+00:00', NULL, NULL, NULL, NULL
+                    );
+
+                    INSERT INTO job_results(
+                        job_id, row_index, word, branch, project_id, project_name, project_url, file_name, line_url, data
+                    ) VALUES(
+                        'legacy-job', 0, 'foo', 'main', 1, 'proj', 'https://gitlab.example.com/proj',
+                        'a.py', 'https://gitlab.example.com/proj/-/blob/main/a.py#L1', 'foo'
+                    );
+                    """
+                )
+
+            store = ServeStore(tmpdir)
+            store.ensure_initialized()
+
+            job = store.get_job("legacy-job")
+            rows, total_count = store.list_job_results_page("legacy-job", limit=10, offset=0)
+            self.assertIsNotNone(job)
+            self.assertEqual(job["targets"], ["code"])
+            self.assertIsNone(job["branch_name"])
+            self.assertEqual(total_count, 1)
+            self.assertEqual(rows[0]["result_type"], "code")
+            self.assertIsNone(rows[0]["commit_id"])
 
     def test_admin_identity_is_locked_per_workdir(self) -> None:
         token_map = {
@@ -200,19 +270,24 @@ class ServeBootstrapTests(unittest.TestCase):
                 app._build_job_payload(user_ctx, {"keywords": "   ", "formats": ["xlsx"]})
             with self.assertRaises(StartupError):
                 app._build_job_payload(user_ctx, {"keywords": "foo", "formats": []})
+            with self.assertRaises(StartupError):
+                app._build_job_payload(user_ctx, {"keywords": "foo", "targets": ["issue"], "formats": ["xlsx"]})
             payload = app._build_job_payload(
                 user_ctx,
                 {
                     "keywords": "foo, bar\nbaz",
+                    "targets": ["code", "commit"],
                     "formats": ["xlsx", "json"],
                     "branch_mode": "specific",
                     "branch_name": "main",
                 },
             )
             self.assertEqual(payload["keywords"], ["foo", "bar", "baz"])
+            self.assertEqual(payload["targets"], ["code", "commit"])
             self.assertEqual(payload["formats"], ["xlsx", "json"])
             self.assertEqual(payload["branch_name"], "main")
             default_payload = app._build_job_payload(user_ctx, {"keywords": "foo", "formats": ["xlsx"]})
+            self.assertEqual(default_payload["targets"], ["code"])
             self.assertEqual(default_payload["branch_mode"], "all")
             self.assertIsNone(default_payload["branch_name"])
             app.executor.shutdown(wait=False)
@@ -340,6 +415,7 @@ class ServeBootstrapTests(unittest.TestCase):
 
         def fake_execute_search(request):
             captured_request["token"] = request.token
+            captured_request["targets"] = request.targets
             return SearchExecutionResult(
                 results=[
                     SearchResult(
@@ -387,6 +463,7 @@ class ServeBootstrapTests(unittest.TestCase):
                     "gitlab_url": "https://gitlab.example.com",
                     "project_ids": [],
                     "keywords": ["foo"],
+                    "targets": ["commit"],
                     "branch_mode": "default",
                     "branch_name": None,
                     "formats": ["xlsx"],
@@ -407,6 +484,7 @@ class ServeBootstrapTests(unittest.TestCase):
 
             job = app.store.get_job("job-1")
             self.assertEqual(captured_request["token"], "glpat-user")
+            self.assertEqual(captured_request["targets"], ["commit"])
             self.assertIsNotNone(job)
             self.assertEqual(job["status"], "completed")
             self.assertEqual(job["result_count"], 1)
@@ -423,6 +501,7 @@ class ServeBootstrapTests(unittest.TestCase):
                     "gitlab_url": "https://gitlab.example.com",
                     "project_ids": [],
                     "keywords": ["foo"],
+                    "targets": ["code", "commit"],
                     "branch_mode": "default",
                     "branch_name": None,
                     "formats": ["xlsx"],
@@ -465,6 +544,7 @@ class ServeBootstrapTests(unittest.TestCase):
             job = store.get_job("job-1")
             jobs = store.list_jobs_for_user("user-1")
             self.assertIsNotNone(job)
+            self.assertEqual(job["targets"], ["code", "commit"])
             self.assertEqual(job["result_count"], 2)
             self.assertEqual(jobs[0]["result_count"], 2)
 
@@ -507,15 +587,41 @@ class ServeBootstrapTests(unittest.TestCase):
                         "data": f"foo {i}",
                     }
                     for i in range(5)
+                ]
+                + [
+                    {
+                        "result_type": "commit",
+                        "word": "foo",
+                        "branch": "main",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "abcdef12",
+                        "line_url": "https://gitlab.example.com/proj/-/commit/abcdef123456",
+                        "data": "Fix foo\n\ncommit body",
+                        "commit_id": "abcdef123456",
+                        "commit_short_id": "abcdef12",
+                        "commit_title": "Fix foo",
+                        "commit_author_name": "Ada",
+                        "commit_author_email": "ada@example.com",
+                        "commit_authored_date": "2026-01-01T00:00:00+00:00",
+                        "commit_committed_date": "2026-01-01T00:01:00+00:00",
+                        "commit_url": "https://gitlab.example.com/proj/-/commit/abcdef123456",
+                        "commit_message": "Fix foo\n\ncommit body",
+                    }
                 ],
             )
             rows, total_count = store.list_job_results_page("job-2", limit=2, offset=2)
-            self.assertEqual(total_count, 5)
+            self.assertEqual(total_count, 6)
             self.assertEqual(len(rows), 2)
             self.assertEqual(rows[0]["file_name"], "f2.py")
             filtered_rows, filtered_total = store.list_job_results_page("job-2", query="foo 4", limit=10, offset=0)
             self.assertEqual(filtered_total, 1)
             self.assertEqual(filtered_rows[0]["file_name"], "f4.py")
+            commit_rows, commit_total = store.list_job_results_page("job-2", query="ada@example.com", limit=10, offset=0)
+            self.assertEqual(commit_total, 1)
+            self.assertEqual(commit_rows[0]["result_type"], "commit")
+            self.assertEqual(commit_rows[0]["commit_id"], "abcdef123456")
 
 
 class WebUiHtmlTests(unittest.TestCase):
@@ -525,6 +631,7 @@ class WebUiHtmlTests(unittest.TestCase):
         self.assertIn("搜索", html)
         self.assertIn("执行日志流", html)
         self.assertIn("结果批次总览", html)
+        self.assertIn("Commit Message", html)
         self.assertIn("系统设置", html)
         self.assertIn("没有 Token？展开创建指引", html)
         self.assertIn("personal_access_tokens", html)

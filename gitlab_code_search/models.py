@@ -23,6 +23,19 @@ class BlobSearchResult:
 
 
 @dataclass
+class CommitSearchResult:
+    commit_id: str
+    short_id: str
+    title: str
+    author_name: str
+    author_email: str
+    authored_date: str
+    committed_date: str
+    web_url: str
+    message: str
+
+
+@dataclass
 class SearchResult:
     word: str
     branch: str
@@ -32,6 +45,16 @@ class SearchResult:
     file_name: str
     line_url: str
     data: str
+    result_type: str = "code"
+    commit_id: str = ""
+    commit_short_id: str = ""
+    commit_title: str = ""
+    commit_author_name: str = ""
+    commit_author_email: str = ""
+    commit_authored_date: str = ""
+    commit_committed_date: str = ""
+    commit_url: str = ""
+    commit_message: str = ""
 
 
 @dataclass

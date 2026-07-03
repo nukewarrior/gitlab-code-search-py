@@ -15,7 +15,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .credential_store import LocalCredentialStore
 from .gitlab_api import GitLabClient
-from .search_service import SearchRequest, execute_search
+from .search_service import SUPPORTED_SEARCH_TARGETS, SearchRequest, execute_search, normalize_search_targets
 from .serve_store import LOCAL_CREDENTIAL_BACKEND, ServeStore, utc_now
 from .web_ui import build_app_html
 
@@ -346,6 +346,7 @@ class ServeApplication:
                 "gitlab_url": original["gitlab_url"],
                 "project_ids": original["project_ids"],
                 "keywords": original["keywords"],
+                "targets": original.get("targets", ["code"]),
                 "branch_mode": original["branch_mode"],
                 "branch_name": original.get("branch_name"),
                 "formats": original["formats"],
@@ -520,6 +521,7 @@ class ServeApplication:
                     token=token,
                     words=job["keywords"],
                     output_formats=job["formats"],
+                    targets=job.get("targets", ["code"]),
                     all_branches=job["branch_mode"] == "all",
                     branch=job.get("branch_name"),
                     workers=self.config.workers,
@@ -560,6 +562,16 @@ class ServeApplication:
                 "file_name": item.file_name,
                 "line_url": item.line_url,
                 "data": item.data,
+                "result_type": item.result_type,
+                "commit_id": item.commit_id,
+                "commit_short_id": item.commit_short_id,
+                "commit_title": item.commit_title,
+                "commit_author_name": item.commit_author_name,
+                "commit_author_email": item.commit_author_email,
+                "commit_authored_date": item.commit_authored_date,
+                "commit_committed_date": item.commit_committed_date,
+                "commit_url": item.commit_url,
+                "commit_message": item.commit_message,
             }
             for item in execution.results
         ]
@@ -585,6 +597,19 @@ class ServeApplication:
         keywords = [str(item).strip() for item in keywords if str(item).strip()]
         if not keywords:
             raise StartupError("请至少提供一个关键字。")
+        raw_targets = body.get("targets")
+        if raw_targets is None:
+            targets = ["code"]
+        elif isinstance(raw_targets, str):
+            targets = [item.strip() for item in raw_targets.split(",") if item.strip()]
+        else:
+            targets = [str(item).strip() for item in raw_targets if str(item).strip()]
+        try:
+            targets = normalize_search_targets(targets)
+        except ValueError as exc:
+            supported = ",".join(SUPPORTED_SEARCH_TARGETS)
+            bad_target = str(exc).rsplit(": ", 1)[-1]
+            raise StartupError(f"搜索目标非法：{bad_target}。支持: {supported}。") from exc
         raw_formats = body.get("formats")
         formats = ["xlsx"] if raw_formats is None else raw_formats
         if isinstance(formats, str):
@@ -604,6 +629,7 @@ class ServeApplication:
             "gitlab_url": str(body.get("gitlab_url") or user_ctx["user"]["gitlab_url"]),
             "project_ids": [int(item) for item in body.get("project_ids") or []],
             "keywords": [str(item) for item in keywords],
+            "targets": targets,
             "branch_mode": branch_mode,
             "branch_name": branch_name,
             "formats": [str(item) for item in formats],
