@@ -73,7 +73,8 @@ class ServeBootstrapTests(unittest.TestCase):
     def test_store_initialization_migrates_legacy_search_columns(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "gcs.sqlite3"
-            with sqlite3.connect(db_path) as conn:
+            conn = sqlite3.connect(db_path)
+            try:
                 conn.executescript(
                     """
                     CREATE TABLE jobs (
@@ -126,6 +127,8 @@ class ServeBootstrapTests(unittest.TestCase):
                     );
                     """
                 )
+            finally:
+                conn.close()
 
             store = ServeStore(tmpdir)
             store.ensure_initialized()
