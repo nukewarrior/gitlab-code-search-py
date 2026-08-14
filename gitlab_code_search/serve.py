@@ -16,7 +16,13 @@ from urllib.parse import parse_qs, urlparse
 from .credential_store import LocalCredentialStore
 from .gitlab_api import GitLabClient
 from .search_service import SUPPORTED_SEARCH_TARGETS, SearchRequest, execute_search, normalize_search_targets
-from .serve_store import LOCAL_CREDENTIAL_BACKEND, ServeStore, utc_now
+from .serve_store import (
+    LOCAL_CREDENTIAL_BACKEND,
+    SUPPORTED_RESULT_TYPES,
+    ServeStore,
+    normalize_result_file_type,
+    utc_now,
+)
 from .web_ui import build_app_html
 
 
@@ -35,6 +41,15 @@ class ServeConfig:
 
 class StartupError(RuntimeError):
     pass
+
+
+def _query_values(params: dict[str, list[str]], key: str) -> list[str]:
+    values: list[str] = []
+    for value in params.get(key, []):
+        normalized = str(value).strip()
+        if normalized and normalized not in values:
+            values.append(normalized)
+    return values
 
 
 class ServeApplication:
@@ -396,6 +411,12 @@ class ServeApplication:
     ) -> None:
         self._get_owned_job(user_ctx, job_id)
         query = params.get("q", [""])[0]
+        branches = _query_values(params, "branch")
+        file_types = [normalize_result_file_type(value) for value in _query_values(params, "file_type")]
+        result_types = _query_values(params, "result_type")
+        invalid_result_types = [value for value in result_types if value not in SUPPORTED_RESULT_TYPES]
+        if invalid_result_types:
+            raise StartupError("结果类型非法。")
         try:
             page = max(1, int(params.get("page", ["1"])[0] or "1"))
             page_size = max(1, min(200, int(params.get("page_size", ["100"])[0] or "100")))
@@ -407,15 +428,33 @@ class ServeApplication:
             query=query or None,
             limit=page_size,
             offset=offset,
+            branches=branches,
+            file_types=file_types,
+            result_types=result_types,
         )
         total_pages = max(1, (total_count + page_size - 1) // page_size)
+        if page > total_pages:
+            page = total_pages
+            offset = (page - 1) * page_size
+            rows, _ = self.store.list_job_results_page(
+                job_id,
+                query=query or None,
+                limit=page_size,
+                offset=offset,
+                branches=branches,
+                file_types=file_types,
+                result_types=result_types,
+            )
         self.store.add_audit_log(
             user_identity=user_ctx["user"]["identity"],
             session_id=user_ctx["session_id"],
             action="view_results",
             target_type="job",
             target_id=job_id,
-            summary=f"query={query}; page={page}; page_size={page_size}",
+            summary=(
+                f"query={query}; branches={branches}; file_types={file_types}; "
+                f"result_types={result_types}; page={page}; page_size={page_size}"
+            ),
             status="success",
             remote_addr=request.client_address[0] if request.client_address else None,
             user_agent=request.headers.get("User-Agent"),
@@ -429,6 +468,7 @@ class ServeApplication:
                 "page": page,
                 "page_size": page_size,
                 "total_pages": total_pages,
+                "filter_options": self.store.list_job_result_filter_options(job_id),
             },
         )
 

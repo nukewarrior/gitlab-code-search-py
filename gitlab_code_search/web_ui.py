@@ -166,6 +166,19 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       box-shadow: 0 0 0 5px rgba(15,109,141,.09);
       background: #fff;
     }
+    button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+      outline: 3px solid rgba(15,109,141,.38);
+      outline-offset: 3px;
+    }
+    .select {
+      min-height: 44px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.92);
+      color: var(--text);
+      padding: 0 34px 0 12px;
+      outline: none;
+    }
     .button-row, .row, .status-row, .chip-row, .topbar-row, .toolbar-row, .action-row {
       display: flex;
       flex-wrap: wrap;
@@ -442,6 +455,144 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       background: rgba(15,109,141,.04);
       border: 1px solid rgba(15,109,141,.08);
     }
+    .result-filter-shell {
+      display: grid;
+      gap: 12px;
+      padding: 16px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(15,109,141,.08), rgba(49,91,160,.05));
+      border: 1px solid rgba(15,109,141,.13);
+    }
+    .result-filter-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: start;
+    }
+    .result-filter-grid {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.35fr) repeat(3, minmax(170px, .8fr));
+      gap: 10px;
+      align-items: end;
+    }
+    .result-filter-control { position: relative; min-width: 0; }
+    .result-filter-trigger {
+      width: 100%;
+      min-height: 48px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 0 13px;
+      border-radius: 15px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.92);
+      text-align: left;
+      transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+    }
+    .result-filter-trigger:hover, .result-filter-trigger[aria-expanded="true"] {
+      border-color: rgba(15,109,141,.28);
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(28,40,65,.06);
+    }
+    .result-filter-trigger-copy { min-width: 0; display: grid; gap: 3px; }
+    .result-filter-trigger-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .result-filter-trigger-copy small { color: var(--muted); font-size: 12px; }
+    .result-filter-chevron { color: var(--muted-2); font-size: 18px; line-height: 1; }
+    .result-filter-popover {
+      position: absolute;
+      z-index: 4;
+      top: calc(100% + 8px);
+      left: 0;
+      width: min(340px, calc(100vw - 48px));
+      padding: 12px;
+      border-radius: 18px;
+      border: 1px solid rgba(15,109,141,.16);
+      background: rgba(255,255,255,.98);
+      box-shadow: 0 24px 48px rgba(28,40,65,.16);
+    }
+    .result-filter-popover-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .result-filter-popover-head strong { font-size: 14px; }
+    .result-filter-close { min-height: 32px; padding: 0 5px; color: var(--accent-strong); font-weight: 700; font-size: 13px; }
+    .result-filter-options {
+      display: grid;
+      gap: 4px;
+      max-height: 260px;
+      overflow: auto;
+      margin-top: 10px;
+    }
+    .result-filter-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 40px;
+      padding: 7px 9px;
+      border-radius: 11px;
+      color: var(--text);
+      cursor: pointer;
+    }
+    .result-filter-option:hover { background: rgba(15,109,141,.07); }
+    .result-filter-option input { width: 18px; height: 18px; accent-color: var(--accent); flex: 0 0 auto; }
+    .result-filter-option span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .result-filter-empty { padding: 12px 8px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .result-active-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .result-filter-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 32px;
+      padding: 0 10px;
+      border-radius: 999px;
+      background: rgba(15,109,141,.11);
+      color: var(--accent-strong);
+      border: 1px solid rgba(15,109,141,.16);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .result-filter-chip:hover { background: rgba(15,109,141,.17); }
+    .result-filter-clear { min-height: 32px; padding: 0 5px; color: var(--muted); font-size: 13px; font-weight: 700; }
+    .result-pagination {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      padding: 12px 0;
+    }
+    .result-pagination-controls, .result-page-jump { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+    .result-page-button {
+      min-width: 40px;
+      min-height: 40px;
+      padding: 0 10px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.8);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+    }
+    .result-page-button:hover:not(:disabled) { border-color: rgba(15,109,141,.24); background: #fff; }
+    .result-page-button.current { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .result-page-button:disabled { opacity: .42; cursor: default; }
+    .result-page-ellipsis { min-width: 24px; text-align: center; color: var(--muted); }
+    .result-page-jump label, .result-page-size-label { color: var(--muted); font-size: 13px; }
+    .result-page-input {
+      width: 72px;
+      min-height: 40px;
+      padding: 0 9px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.92);
+      text-align: center;
+    }
+    .result-toolbar-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .result-filter-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
     .summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .summary-card { background: rgba(255,255,255,.84); border: 1px solid var(--line); }
     .table-wrap {
@@ -525,6 +676,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     @media (max-width: 1260px) {
       .dashboard-grid, .task-summary-row, .detail-layout, .settings-grid { grid-template-columns: 1fr; }
       .result-grid, .stat-strip, .summary-grid, .note-grid, .overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .result-filter-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 980px) {
       .shell { width: min(100%, calc(100% - 20px)); margin: 10px auto; }
@@ -534,12 +686,24 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     }
     @media (max-width: 720px) {
       .stat-strip, .result-grid, .summary-grid, .note-grid, .overview-grid, .split-two { grid-template-columns: 1fr; }
+      .result-filter-grid { grid-template-columns: 1fr; }
       .panel, .detail-card, .settings-panel, .workspace-card, .log-card, .login-card {
         padding: 16px;
         border-radius: 24px;
       }
       h1 { font-size: 38px; }
       .topbar { flex-direction: column; align-items: start; }
+      .result-pagination { align-items: stretch; }
+      .result-pagination-controls, .result-page-jump { width: 100%; }
+      .result-pagination-controls { overflow-x: auto; padding-bottom: 2px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        scroll-behavior: auto !important;
+        transition-duration: .01ms !important;
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+      }
     }
   </style>
 </head>
@@ -570,10 +734,17 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       resultTask: null,
       resultRows: [],
       resultFilter: '',
+      resultFilterOptions: { branches: [], file_types: [], result_types: [] },
+      resultSelectedBranches: [],
+      resultSelectedFileTypes: [],
+      resultSelectedTypes: [],
+      resultFilterMenus: { branch: false, file_type: false, result_type: false },
+      resultFilterOptionQueries: { branch: '', file_type: '', result_type: '' },
       resultPage: 1,
       resultPageSize: 100,
       resultTotalCount: 0,
       resultTotalPages: 1,
+      resultRequestId: 0,
       resultsQuery: '',
       settings: null,
       auditLogs: []
@@ -605,8 +776,144 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       return list.map(targetLabel).join(' / ');
     }
     function resultTypeLabel(type) {
-      if (type === 'commit') return 'Commit';
+      if (type === 'commit') return '提交记录';
       return '代码';
+    }
+    function resultFilterOptionLabel(kind, value) {
+      if (kind === 'file_type') return value === '无后缀' ? value : '.' + value;
+      if (kind === 'result_type') return resultTypeLabel(value);
+      return value;
+    }
+    function resultFilterTitle(kind) {
+      if (kind === 'branch') return '分支';
+      if (kind === 'file_type') return '文件类型';
+      return '结果类型';
+    }
+    function resultFilterOptionsFor(kind) {
+      if (kind === 'branch') return state.resultFilterOptions.branches || [];
+      if (kind === 'file_type') return state.resultFilterOptions.file_types || [];
+      return state.resultFilterOptions.result_types || [];
+    }
+    function resultFilterSelectionFor(kind) {
+      if (kind === 'branch') return state.resultSelectedBranches;
+      if (kind === 'file_type') return state.resultSelectedFileTypes;
+      return state.resultSelectedTypes;
+    }
+    function setResultFilterSelection(kind, values) {
+      if (kind === 'branch') state.resultSelectedBranches = values;
+      else if (kind === 'file_type') state.resultSelectedFileTypes = values;
+      else state.resultSelectedTypes = values;
+    }
+    function normalizeResultFileTypeValue(value) {
+      const normalized = String(value || '').trim().toLowerCase().replace(/^\\./, '');
+      return normalized || '无后缀';
+    }
+    function resultFilterSelectionSummary(kind) {
+      const selected = resultFilterSelectionFor(kind);
+      if (!selected.length) return '全部';
+      if (selected.length === 1) return resultFilterOptionLabel(kind, selected[0]);
+      return selected.length + ' 项已选';
+    }
+    function resultFilterHasAny() {
+      return Boolean(
+        state.resultFilter.trim()
+        || state.resultSelectedBranches.length
+        || state.resultSelectedFileTypes.length
+        || state.resultSelectedTypes.length
+      );
+    }
+    function renderResultFilterControl(kind) {
+      const title = resultFilterTitle(kind);
+      const selected = new Set(resultFilterSelectionFor(kind));
+      const query = (state.resultFilterOptionQueries[kind] || '').trim().toLowerCase();
+      const options = resultFilterOptionsFor(kind).filter((value) => {
+        if (!query) return true;
+        return resultFilterOptionLabel(kind, value).toLowerCase().includes(query);
+      });
+      const open = Boolean(state.resultFilterMenus[kind]);
+      const searchId = 'result-filter-search-' + kind.replace('_', '-');
+      return `
+        <div class="result-filter-control">
+          <span class="label">${title}</span>
+          <button type="button" class="result-filter-trigger" aria-label="${title}筛选，${esc(resultFilterSelectionSummary(kind))}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="result-filter-popover-${kind}" onclick="toggleResultFilterMenu('${kind}')">
+            <span class="result-filter-trigger-copy"><strong>${esc(resultFilterSelectionSummary(kind))}</strong><small>${selected.size ? '已应用筛选' : '未限制'}</small></span>
+            <span class="result-filter-chevron" aria-hidden="true">${open ? '⌃' : '⌄'}</span>
+          </button>
+          ${open ? `
+            <div class="result-filter-popover" id="result-filter-popover-${kind}" role="dialog" aria-label="${title}筛选">
+              <div class="result-filter-popover-head"><strong>选择${title}</strong><button type="button" class="result-filter-close" onclick="toggleResultFilterMenu('${kind}')">完成</button></div>
+              <label class="label" for="${searchId}">搜索${title}</label>
+              <input class="input result-filter-search" id="${searchId}" data-result-filter-option-search="true" data-filter-kind="${kind}" value="${esc(state.resultFilterOptionQueries[kind] || '')}" placeholder="输入名称查找" />
+              <div class="result-filter-options">
+                ${options.length
+                  ? options.map((value, index) => `<label class="result-filter-option"><input id="result-filter-option-${kind}-${index}" type="checkbox" data-result-filter-option="true" data-filter-kind="${kind}" data-filter-value="${esc(value)}" ${selected.has(value) ? 'checked' : ''} /><span>${esc(resultFilterOptionLabel(kind, value))}</span></label>`).join('')
+                  : `<div class="result-filter-empty">${query ? '没有匹配的选项。' : '当前任务没有可用选项。'}</div>`}
+              </div>
+            </div>` : ''}
+        </div>`;
+    }
+    function resultActiveFilterEntries() {
+      const entries = [];
+      if (state.resultFilter.trim()) entries.push({ kind: 'query', value: state.resultFilter.trim(), label: '全文：' + state.resultFilter.trim() });
+      state.resultSelectedBranches.forEach((value) => entries.push({ kind: 'branch', value, label: '分支：' + value }));
+      state.resultSelectedFileTypes.forEach((value) => entries.push({ kind: 'file_type', value, label: '类型：' + resultFilterOptionLabel('file_type', value) }));
+      state.resultSelectedTypes.forEach((value) => entries.push({ kind: 'result_type', value, label: '结果：' + resultFilterOptionLabel('result_type', value) }));
+      return entries;
+    }
+    function renderResultActiveFilters() {
+      const entries = resultActiveFilterEntries();
+      if (!entries.length) return '<span class="result-filter-note">未应用额外筛选，当前显示此任务的全部结果。</span>';
+      return `<span class="result-filter-note">已应用筛选</span>${entries.map((entry) => `<button type="button" class="result-filter-chip" data-result-filter-remove-kind="${entry.kind}" data-result-filter-remove-value="${esc(entry.value)}" aria-label="移除${esc(entry.label)}">${esc(entry.label)} <span aria-hidden="true">×</span></button>`).join('')}<button type="button" class="result-filter-clear" onclick="clearResultFilters()">清除全部</button>`;
+    }
+    function resultFilterQueryString() {
+      const params = new URLSearchParams();
+      if (state.resultFilter.trim()) params.set('q', state.resultFilter.trim());
+      state.resultSelectedBranches.forEach((value) => params.append('branch', value));
+      state.resultSelectedFileTypes.forEach((value) => params.append('file_type', value));
+      state.resultSelectedTypes.forEach((value) => params.append('result_type', value));
+      params.set('page', String(state.resultPage));
+      params.set('page_size', String(state.resultPageSize));
+      return params.toString();
+    }
+    function resultHashState() {
+      const hash = window.location.hash || '';
+      if (!hash.startsWith('#result/')) return { jobId: '', params: new URLSearchParams() };
+      const raw = hash.slice('#result/'.length);
+      const separator = raw.indexOf('?');
+      const encodedJobId = separator === -1 ? raw : raw.slice(0, separator);
+      const query = separator === -1 ? '' : raw.slice(separator + 1);
+      return { jobId: decodeURIComponent(encodedJobId), params: new URLSearchParams(query) };
+    }
+    function applyResultHashState(params) {
+      state.resultFilter = params.get('q') || '';
+      state.resultSelectedBranches = params.getAll('branch');
+      state.resultSelectedFileTypes = params.getAll('file_type').map(normalizeResultFileTypeValue);
+      state.resultSelectedTypes = params.getAll('result_type');
+      const pageSize = Number(params.get('page_size') || 100);
+      state.resultPageSize = [50, 100, 200].includes(pageSize) ? pageSize : 100;
+      state.resultPage = Math.max(1, Number(params.get('page') || 1) || 1);
+      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
+      state.resultFilterOptionQueries = { branch: '', file_type: '', result_type: '' };
+    }
+    function resetResultFilters() {
+      state.resultFilter = '';
+      state.resultSelectedBranches = [];
+      state.resultSelectedFileTypes = [];
+      state.resultSelectedTypes = [];
+      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
+      state.resultFilterOptionQueries = { branch: '', file_type: '', result_type: '' };
+      state.resultPage = 1;
+      state.resultPageSize = 100;
+    }
+    function setResultHash(jobId, options = {}) {
+      const query = options.includeState === false ? '' : resultFilterQueryString();
+      const next = jobId ? '#result/' + encodeURIComponent(jobId) + (query ? '?' + query : '') : '';
+      if (window.location.hash === next) return;
+      if (options.replace) {
+        window.history.replaceState(null, '', next || window.location.pathname + window.location.search);
+      } else {
+        window.history.pushState(null, '', next || window.location.pathname + window.location.search);
+      }
     }
     function statusCount(statuses) {
       return state.jobs.filter((job) => statuses.includes(job.status)).length;
@@ -673,26 +980,20 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       return '/#result/' + encodeURIComponent(jobId);
     }
     function resultIdFromHash() {
-      const hash = window.location.hash || '';
-      if (!hash.startsWith('#result/')) return '';
-      return decodeURIComponent(hash.slice('#result/'.length));
+      return resultHashState().jobId;
     }
     function isStandaloneResultView() {
       return !!resultIdFromHash();
     }
-    function setResultHash(jobId) {
-      const next = jobId ? '#result/' + encodeURIComponent(jobId) : '';
-      if (window.location.hash === next) return;
-      window.location.hash = next;
-    }
     async function hydrateResultFromHash() {
-      const jobId = resultIdFromHash();
+      const hash = window.location.hash || '';
+      const { jobId, params } = resultHashState();
       if (!jobId || !state.me) return;
       const task = state.completedJobs.find((item) => item.id === jobId) || state.jobs.find((item) => item.id === jobId);
       if (!task) return;
-      if (!state.resultTask || state.resultTask.id !== jobId) {
-        state.resultFilter = '';
-        state.resultPage = 1;
+      if (state.__resultHash !== hash || !state.resultTask || state.resultTask.id !== jobId) {
+        applyResultHashState(params);
+        state.__resultHash = hash;
       }
       state.resultTask = task;
       state.view = 'result-detail';
@@ -851,29 +1152,41 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       const task = state.completedJobs.find((item) => item.id === jobId) || state.jobs.find((item) => item.id === jobId);
       if (!task) return;
       state.resultTask = task;
-      state.resultFilter = '';
-      state.resultPage = 1;
+      resetResultFilters();
+      state.resultFilterOptions = { branches: [], file_types: [], result_types: [] };
       state.resultTotalCount = Number(task.result_count || 0);
       state.resultTotalPages = Math.max(1, Math.ceil(state.resultTotalCount / state.resultPageSize));
       state.view = 'result-detail';
       setResultHash(jobId);
+      state.__resultHash = window.location.hash;
       render();
       await refreshResultRows();
     }
+    function resultRequestParams() {
+      const params = new URLSearchParams();
+      if (state.resultFilter.trim()) params.set('q', state.resultFilter.trim());
+      state.resultSelectedBranches.forEach((value) => params.append('branch', value));
+      state.resultSelectedFileTypes.forEach((value) => params.append('file_type', value));
+      state.resultSelectedTypes.forEach((value) => params.append('result_type', value));
+      params.set('page', String(state.resultPage));
+      params.set('page_size', String(state.resultPageSize));
+      return params;
+    }
     async function refreshResultRows(options = {}) {
       if (!state.resultTask) return;
+      const taskId = state.resultTask.id;
+      const requestId = ++state.resultRequestId;
       try {
-        const payload = await api(
-          '/api/jobs/' + encodeURIComponent(state.resultTask.id)
-          + '/results?q=' + encodeURIComponent(state.resultFilter || '')
-          + '&page=' + encodeURIComponent(String(state.resultPage))
-          + '&page_size=' + encodeURIComponent(String(state.resultPageSize))
-        );
+        const payload = await api('/api/jobs/' + encodeURIComponent(taskId) + '/results?' + resultRequestParams().toString());
+        if (requestId !== state.resultRequestId || !state.resultTask || state.resultTask.id !== taskId) return;
         state.resultRows = payload.rows || [];
         state.resultTotalCount = Number(payload.total_count || 0);
         state.resultPage = Number(payload.page || state.resultPage || 1);
         state.resultPageSize = Number(payload.page_size || state.resultPageSize || 100);
         state.resultTotalPages = Number(payload.total_pages || Math.max(1, Math.ceil(state.resultTotalCount / state.resultPageSize)));
+        state.resultFilterOptions = payload.filter_options || { branches: [], file_types: [], result_types: [] };
+        setResultHash(taskId, { replace: true });
+        state.__resultHash = window.location.hash;
         render();
         if (options.restoreFocus) restoreInputFocus('result-filter', options.selectionStart, options.selectionEnd);
       } catch (err) { toast(err.message); }
@@ -883,8 +1196,116 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       const nextPage = Math.max(1, Math.min(Number(page) || 1, state.resultTotalPages || 1));
       if (nextPage === state.resultPage) return;
       state.resultPage = nextPage;
+      setResultHash(state.resultTask.id);
       render();
       await refreshResultRows();
+    }
+    async function setResultPageFromInput(value) {
+      const parsed = Number.parseInt(String(value || '').trim(), 10);
+      if (!Number.isFinite(parsed) || parsed < 1) {
+        toast('请输入有效页码');
+        return;
+      }
+      await setResultPage(parsed);
+    }
+    async function setResultPageSize(value) {
+      const nextSize = Number(value);
+      if (![50, 100, 200].includes(nextSize) || !state.resultTask) return;
+      if (nextSize === state.resultPageSize && state.resultPage === 1) return;
+      state.resultPageSize = nextSize;
+      state.resultPage = 1;
+      setResultHash(state.resultTask.id);
+      render();
+      await refreshResultRows();
+    }
+    function resultPageItems() {
+      const totalPages = state.resultTotalPages || 1;
+      const currentPage = Math.min(state.resultPage || 1, totalPages);
+      if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1);
+      const pages = new Set([1, totalPages]);
+      for (let page = currentPage - 2; page <= currentPage + 2; page += 1) {
+        if (page > 0 && page <= totalPages) pages.add(page);
+      }
+      const sorted = [...pages].sort((left, right) => left - right);
+      const items = [];
+      let previous = 0;
+      sorted.forEach((page) => {
+        if (previous && page - previous > 1) items.push('ellipsis-' + page);
+        items.push(page);
+        previous = page;
+      });
+      return items;
+    }
+    function renderResultPagination(position) {
+      const totalPages = state.resultTotalPages || 1;
+      const currentPage = state.resultPage || 1;
+      const disabledFirst = currentPage <= 1 ? 'disabled' : '';
+      const disabledLast = currentPage >= totalPages ? 'disabled' : '';
+      return `
+        <nav class="result-pagination" aria-label="结果分页">
+          <div class="result-pagination-controls">
+            <button type="button" class="result-page-button" onclick="setResultPage(1)" ${disabledFirst}>首页</button>
+            <button type="button" class="result-page-button" onclick="setResultPage(${currentPage - 1})" ${disabledFirst}>上一页</button>
+            ${resultPageItems().map((item) => typeof item === 'number'
+              ? `<button type="button" class="result-page-button ${item === currentPage ? 'current' : ''}" onclick="setResultPage(${item})" ${item === currentPage ? 'aria-current="page"' : ''}>${item}</button>`
+              : `<span class="result-page-ellipsis" aria-hidden="true">…</span>`).join('')}
+            <button type="button" class="result-page-button" onclick="setResultPage(${currentPage + 1})" ${disabledLast}>下一页</button>
+            <button type="button" class="result-page-button" onclick="setResultPage(${totalPages})" ${disabledLast}>末页</button>
+          </div>
+          <div class="result-page-jump">
+            <form data-result-page-jump="${position}">
+              <label for="result-page-input-${position}">跳至</label>
+              <input class="result-page-input" id="result-page-input-${position}" data-result-page-input="true" type="number" min="1" max="${totalPages}" value="${currentPage}" inputmode="numeric" />
+              <span class="result-page-jump-label">/ ${totalPages} 页</span>
+            </form>
+            <label class="result-page-size-label" for="result-page-size-${position}">每页</label>
+            <select class="select" id="result-page-size-${position}" data-result-page-size="true" aria-label="每页显示数量">
+              ${[50, 100, 200].map((size) => `<option value="${size}" ${state.resultPageSize === size ? 'selected' : ''}>${size} 条</option>`).join('')}
+            </select>
+          </div>
+        </nav>`;
+    }
+    function toggleResultFilterMenu(kind) {
+      const wasOpen = Boolean(state.resultFilterMenus[kind]);
+      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
+      state.resultFilterMenus[kind] = !wasOpen;
+      render();
+    }
+    function setResultFilterOption(kind, value, checked) {
+      const normalizedValue = kind === 'file_type' ? normalizeResultFileTypeValue(value) : value;
+      const selected = new Set(resultFilterSelectionFor(kind));
+      if (checked) selected.add(normalizedValue);
+      else selected.delete(normalizedValue);
+      setResultFilterSelection(kind, [...selected]);
+      state.resultPage = 1;
+      state.resultFilterMenus[kind] = true;
+      setResultHash(state.resultTask.id);
+      render();
+      refreshResultRows();
+    }
+    function removeResultFilter(kind, value) {
+      if (kind === 'query') {
+        state.resultFilter = '';
+      } else {
+        setResultFilterSelection(kind, resultFilterSelectionFor(kind).filter((item) => item !== value));
+      }
+      state.resultPage = 1;
+      setResultHash(state.resultTask.id);
+      render();
+      refreshResultRows();
+    }
+    function clearResultFilters() {
+      if (!state.resultTask) return;
+      state.resultFilter = '';
+      state.resultSelectedBranches = [];
+      state.resultSelectedFileTypes = [];
+      state.resultSelectedTypes = [];
+      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
+      state.resultFilterOptionQueries = { branch: '', file_type: '', result_type: '' };
+      state.resultPage = 1;
+      setResultHash(state.resultTask.id);
+      render();
+      refreshResultRows();
     }
     async function saveSettings() {
       if (!state.settings) return;
@@ -1203,8 +1624,9 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       if (!state.resultTask) return `<div class="page"><div class="empty-card">当前没有可查看的已完成结果。</div></div>`;
       const hasResults = (state.resultTask.result_count || 0) > 0;
       const standalone = isStandaloneResultView();
-      const pageStart = hasResults ? ((state.resultPage - 1) * state.resultPageSize) + 1 : 0;
-      const pageEnd = hasResults ? Math.min(state.resultPage * state.resultPageSize, state.resultTotalCount || 0) : 0;
+      const hasFilteredResults = state.resultTotalCount > 0;
+      const pageStart = hasFilteredResults ? ((state.resultPage - 1) * state.resultPageSize) + 1 : 0;
+      const pageEnd = hasFilteredResults ? Math.min(state.resultPage * state.resultPageSize, state.resultTotalCount || 0) : 0;
       return `
         <div class="page">
           <div class="detail-layout ${standalone ? 'standalone' : ''}">
@@ -1244,21 +1666,32 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                 <div class="toolbar-row">
                   ${(state.resultTask.formats || []).map((format) => `<button type="button" class="download-pill active" ${hasResults ? `onclick="window.location='/api/jobs/${encodeURIComponent(state.resultTask.id)}/exports/${format}'"` : 'disabled'}>${format.toUpperCase()} 下载</button>`).join('')}
                 </div>
-                <div class="field" style="margin-top:0;">
-                  <span class="label">结果内过滤</span>
-                  <input class="input" id="result-filter" value="${esc(state.resultFilter)}" placeholder="按类型、关键字、分支、文件、commit、作者或命中内容过滤" />
+                <div class="result-filter-shell">
+                  <div class="result-filter-head">
+                    <div class="section-title">
+                      <strong style="font-size:20px;">结果筛选</strong>
+                      <div class="section-copy">组合条件会同时生效；文件类型只过滤代码结果。</div>
+                    </div>
+                    <span class="metric-pill">筛选后 ${esc(state.resultTotalCount)} 条</span>
+                  </div>
+                  <div class="result-filter-grid">
+                    <div class="field" style="margin-top:0;">
+                      <label class="label" for="result-filter">全文检索</label>
+                      <input class="input" id="result-filter" value="${esc(state.resultFilter)}" placeholder="按关键字、项目、文件、作者或命中内容查找" aria-describedby="result-filter-help" />
+                    </div>
+                    ${renderResultFilterControl('branch')}
+                    ${renderResultFilterControl('file_type')}
+                    ${renderResultFilterControl('result_type')}
+                  </div>
+                  <div id="result-filter-help" class="result-filter-note">分支和结果类型支持多选；文件类型按精确扩展名匹配。${state.resultSelectedFileTypes.length ? '提交记录不会因文件类型条件被隐藏，可通过结果类型单独控制。' : ''}</div>
+                  <div class="result-active-filters">${renderResultActiveFilters()}</div>
                 </div>
-                <div class="toolbar-row">
-                  <span class="metric-pill">当前第 ${esc(state.resultPage)} / ${esc(state.resultTotalPages)} 页</span>
+                <div class="result-toolbar-meta" role="status" aria-live="polite">
+                  <span class="metric-pill">第 ${esc(state.resultPage)} / ${esc(state.resultTotalPages)} 页</span>
                   <span class="metric-pill">本页 ${esc(state.resultRows.length)} 行</span>
                   <span class="metric-pill">显示 ${esc(pageStart)} - ${esc(pageEnd)} / ${esc(state.resultTotalCount)} 行</span>
                 </div>
-                <div class="button-row">
-                  <button type="button" class="btn secondary" onclick="setResultPage(1)" ${state.resultPage <= 1 ? 'disabled' : ''}>第一页</button>
-                  <button type="button" class="btn secondary" onclick="setResultPage(${state.resultPage - 1})" ${state.resultPage <= 1 ? 'disabled' : ''}>上一页</button>
-                  <button type="button" class="btn secondary" onclick="setResultPage(${state.resultPage + 1})" ${state.resultPage >= state.resultTotalPages ? 'disabled' : ''}>下一页</button>
-                  <button type="button" class="btn secondary" onclick="setResultPage(${state.resultTotalPages})" ${state.resultPage >= state.resultTotalPages ? 'disabled' : ''}>最后一页</button>
-                </div>
+                ${renderResultPagination('top')}
               </div>
               <div class="table-wrap">
                 <table class="result-table">
@@ -1280,6 +1713,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                   </tbody>
                 </table>
               </div>
+              ${renderResultPagination('bottom')}
             </section>
           </div>
         </div>`;
@@ -1397,6 +1831,8 @@ def build_app_html(default_gitlab_url: str = "") -> str:
         const input = document.getElementById(id);
         if (!input) return;
         input.focus();
+        if (input instanceof HTMLInputElement && input.type === 'checkbox') return;
+        if (typeof input.setSelectionRange !== 'function') return;
         const start = Math.min(selectionStart ?? input.value.length, input.value.length);
         const end = Math.min(selectionEnd ?? start, input.value.length);
         input.setSelectionRange(start, end);
@@ -1406,8 +1842,10 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       const active = document.activeElement;
       if (!active || !active.id) return null;
       if (!(active instanceof HTMLInputElement) && !(active instanceof HTMLTextAreaElement)) return null;
+      if (active instanceof HTMLInputElement && active.type === 'checkbox') return { id: active.id, focusOnly: true };
       return {
         id: active.id,
+        focusOnly: false,
         selectionStart: active.selectionStart ?? active.value.length,
         selectionEnd: active.selectionEnd ?? active.selectionStart ?? active.value.length
       };
@@ -1453,10 +1891,44 @@ def build_app_html(default_gitlab_url: str = "") -> str:
           const selectionStart = e.target.selectionStart ?? e.target.value.length;
           const selectionEnd = e.target.selectionEnd ?? selectionStart;
           window.__resultFilterTimer = setTimeout(() => {
+            if (state.resultTask) setResultHash(state.resultTask.id, { replace: true });
             refreshResultRows({ restoreFocus: true, selectionStart, selectionEnd });
           }, 140);
         });
       }
+      document.querySelectorAll('[data-result-filter-option-search="true"]').forEach((input) => {
+        input.addEventListener('input', (event) => {
+          const target = event.currentTarget;
+          const kind = target.dataset.filterKind;
+          state.resultFilterOptionQueries[kind] = target.value;
+          const selectionStart = target.selectionStart ?? target.value.length;
+          const selectionEnd = target.selectionEnd ?? selectionStart;
+          render();
+          restoreInputFocus(target.id, selectionStart, selectionEnd);
+        });
+      });
+      document.querySelectorAll('[data-result-filter-option="true"]').forEach((input) => {
+        input.addEventListener('change', (event) => {
+          const target = event.currentTarget;
+          setResultFilterOption(target.dataset.filterKind, target.dataset.filterValue, target.checked);
+        });
+      });
+      document.querySelectorAll('[data-result-filter-remove-kind]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+          const target = event.currentTarget;
+          removeResultFilter(target.dataset.resultFilterRemoveKind, target.dataset.resultFilterRemoveValue);
+        });
+      });
+      document.querySelectorAll('[data-result-page-jump]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+          event.preventDefault();
+          const input = form.querySelector('[data-result-page-input="true"]');
+          setResultPageFromInput(input ? input.value : '');
+        });
+      });
+      document.querySelectorAll('[data-result-page-size="true"]').forEach((select) => {
+        select.addEventListener('change', (event) => setResultPageSize(event.currentTarget.value));
+      });
       if (resultBatchQuery) {
         resultBatchQuery.addEventListener('input', (e) => {
           state.resultsQuery = e.target.value;
@@ -1493,6 +1965,8 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     window.setView = setView;
     window.setResultHash = setResultHash;
     window.setResultPage = setResultPage;
+    window.toggleResultFilterMenu = toggleResultFilterMenu;
+    window.clearResultFilters = clearResultFilters;
     window.setBranchMode = setBranchMode;
     window.toggleFormat = toggleFormat;
     window.toggleTarget = toggleTarget;
@@ -1503,6 +1977,12 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     window.cancelJob = cancelJob;
     window.openResult = openResult;
     window.saveSettings = saveSettings;
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return;
+      if (!Object.values(state.resultFilterMenus).some(Boolean)) return;
+      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
+      render();
+    });
     (async function init(){
       await loadMe();
       if (state.me) await refreshAll();
@@ -1510,7 +1990,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       render();
       setInterval(refreshJobs, 4000);
     })();
-    window.addEventListener('hashchange', async () => {
+    async function handleResultLocationChange() {
       if (!state.me) return;
       const jobId = resultIdFromHash();
       if (!jobId) {
@@ -1522,7 +2002,9 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       }
       await refreshJobs();
       await hydrateResultFromHash();
-    });
+    }
+    window.addEventListener('hashchange', handleResultLocationChange);
+    window.addEventListener('popstate', handleResultLocationChange);
   </script>
 </body>
 </html>"""

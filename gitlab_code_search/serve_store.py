@@ -8,6 +8,23 @@ from typing import Any
 
 
 LOCAL_CREDENTIAL_BACKEND = "local_v1"
+RESULT_FILE_TYPE_NONE = "无后缀"
+SUPPORTED_RESULT_TYPES = ("code", "commit")
+
+
+def normalize_result_file_type(value: str) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized.startswith("."):
+        normalized = normalized[1:]
+    return normalized or RESULT_FILE_TYPE_NONE
+
+
+def result_file_type(file_name: str, result_type: str = "code") -> str:
+    if result_type != "code":
+        return ""
+    basename = str(file_name or "").replace("\\", "/").rsplit("/", 1)[-1]
+    suffix = Path(basename).suffix.lower().lstrip(".")
+    return suffix or RESULT_FILE_TYPE_NONE
 
 
 def utc_now() -> str:
@@ -164,6 +181,7 @@ class ServeStore:
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, factory=ClosingConnection)
         conn.row_factory = sqlite3.Row
+        conn.create_function("result_file_type", 2, result_file_type)
         return conn
 
     def ensure_local_credential_backend(self) -> tuple[bool, str | None, int]:
@@ -430,9 +448,13 @@ class ServeStore:
         *,
         limit: int = 100,
         offset: int = 0,
+        branches: list[str] | None = None,
+        file_types: list[str] | None = None,
+        result_types: list[str] | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         where_sql = "job_id = ?"
         params: list[Any] = [job_id]
+        file_types = [normalize_result_file_type(value) for value in (file_types or [])]
         if query:
             like = f"%{query}%"
             where_sql += (
@@ -441,12 +463,56 @@ class ServeStore:
                 " OR commit_author_name LIKE ? OR commit_author_email LIKE ? OR commit_message LIKE ?)"
             )
             params.extend([like] * 13)
+        if branches:
+            placeholders = ", ".join("?" for _ in branches)
+            where_sql += f" AND branch IN ({placeholders})"
+            params.extend(branches)
+        if result_types:
+            placeholders = ", ".join("?" for _ in result_types)
+            where_sql += f" AND result_type IN ({placeholders})"
+            params.extend(result_types)
+        if file_types:
+            placeholders = ", ".join("?" for _ in file_types)
+            where_sql += f" AND (result_type != 'code' OR result_file_type(file_name, result_type) IN ({placeholders}))"
+            params.extend(file_types)
         count_sql = f"SELECT COUNT(*) FROM job_results WHERE {where_sql}"
         rows_sql = f"SELECT * FROM job_results WHERE {where_sql} ORDER BY row_index LIMIT ? OFFSET ?"
         with self._connect() as conn:
             total_count = int(conn.execute(count_sql, params).fetchone()[0])
             rows = conn.execute(rows_sql, [*params, limit, offset]).fetchall()
         return [dict(row) for row in rows], total_count
+
+    def list_job_result_filter_options(self, job_id: str) -> dict[str, list[str]]:
+        with self._connect() as conn:
+            branch_rows = conn.execute(
+                "SELECT DISTINCT branch FROM job_results WHERE job_id = ? AND branch != ''",
+                (job_id,),
+            ).fetchall()
+            file_type_rows = conn.execute(
+                """
+                SELECT DISTINCT result_file_type(file_name, result_type) AS file_type
+                FROM job_results
+                WHERE job_id = ? AND result_type = 'code'
+                """,
+                (job_id,),
+            ).fetchall()
+            result_type_rows = conn.execute(
+                "SELECT DISTINCT result_type FROM job_results WHERE job_id = ?",
+                (job_id,),
+            ).fetchall()
+
+        branches = sorted({str(row["branch"]) for row in branch_rows}, key=str.casefold)
+        file_types = sorted(
+            {str(row["file_type"]) for row in file_type_rows if row["file_type"]},
+            key=lambda value: (value == RESULT_FILE_TYPE_NONE, value),
+        )
+        available_types = {str(row["result_type"]) for row in result_type_rows}
+        result_types = [result_type for result_type in SUPPORTED_RESULT_TYPES if result_type in available_types]
+        return {
+            "branches": branches,
+            "file_types": file_types,
+            "result_types": result_types,
+        }
 
     def mark_unfinished_jobs_interrupted(self) -> None:
         with self._connect() as conn:
