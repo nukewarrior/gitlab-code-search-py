@@ -724,6 +724,129 @@ class ServeBootstrapTests(unittest.TestCase):
             self.assertEqual(options["file_types"], ["py", "yaml", "无后缀"])
             self.assertEqual(options["result_types"], ["code", "commit"])
 
+    def test_store_filters_results_by_keyword_author_and_content(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ServeStore(tmpdir)
+            store.ensure_initialized()
+            store.insert_job(
+                {
+                    "id": "job-field-filters",
+                    "owner_identity": "user-1",
+                    "gitlab_url": "https://gitlab.example.com",
+                    "project_ids": [],
+                    "keywords": ["foo", "bar"],
+                    "branch_mode": "all",
+                    "branch_name": None,
+                    "formats": ["xlsx"],
+                    "status": "completed",
+                    "progress": 100,
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "started_at": None,
+                    "finished_at": None,
+                    "failure_reason": None,
+                    "export_base_name": None,
+                    "export_paths": [],
+                    "original_job_id": None,
+                }
+            )
+            store.add_job_results(
+                "job-field-filters",
+                [
+                    {
+                        "word": "foo",
+                        "branch": "main",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "src/App.PY",
+                        "line_url": "https://gitlab.example.com/proj/-/blob/main/src/App.PY#L1",
+                        "data": "needle in code",
+                    },
+                    {
+                        "word": "bar",
+                        "branch": "release/2026-q2",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "README",
+                        "line_url": "https://gitlab.example.com/proj/-/blob/release/README#L2",
+                        "data": "other code",
+                    },
+                    {
+                        "result_type": "commit",
+                        "word": "foo",
+                        "branch": "release/2026-q2",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "abcdef12",
+                        "line_url": "https://gitlab.example.com/proj/-/commit/abcdef123456",
+                        "data": "commit body",
+                        "commit_id": "abcdef123456",
+                        "commit_short_id": "abcdef12",
+                        "commit_title": "Needle title",
+                        "commit_author_name": "Ada",
+                        "commit_author_email": "ada@example.com",
+                        "commit_message": "Needle title\n\ncommit body",
+                    },
+                    {
+                        "result_type": "commit",
+                        "word": "baz",
+                        "branch": "main",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "12345678",
+                        "line_url": "https://gitlab.example.com/proj/-/commit/1234567890ab",
+                        "data": "refactor body",
+                        "commit_id": "1234567890ab",
+                        "commit_short_id": "12345678",
+                        "commit_title": "Refactor",
+                        "commit_author_name": "Bot",
+                        "commit_message": "Refactor",
+                    },
+                ],
+            )
+
+            rows, total_count = store.list_job_results_page(
+                "job-field-filters",
+                keywords=["foo", "bar"],
+                limit=10,
+            )
+            self.assertEqual(total_count, 3)
+            self.assertEqual([row["word"] for row in rows], ["foo", "bar", "foo"])
+
+            rows, total_count = store.list_job_results_page(
+                "job-field-filters",
+                authors=["Ada <ada@example.com>"],
+                limit=10,
+            )
+            self.assertEqual(total_count, 1)
+            self.assertEqual(rows[0]["commit_author_name"], "Ada")
+
+            rows, total_count = store.list_job_results_page(
+                "job-field-filters",
+                content="needle",
+                limit=10,
+            )
+            self.assertEqual(total_count, 2)
+            self.assertEqual({row["result_type"] for row in rows}, {"code", "commit"})
+
+            rows, total_count = store.list_job_results_page(
+                "job-field-filters",
+                keywords=["foo"],
+                branches=["release/2026-q2"],
+                authors=["Ada <ada@example.com>"],
+                content="needle",
+                limit=10,
+            )
+            self.assertEqual(total_count, 1)
+            self.assertEqual(rows[0]["result_type"], "commit")
+
+            options = store.list_job_result_filter_options("job-field-filters")
+            self.assertEqual(options["keywords"], ["bar", "baz", "foo"])
+            self.assertEqual(options["authors"], ["Ada <ada@example.com>", "Bot"])
+
     def test_result_handler_accepts_repeated_filter_parameters(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ServeStore(tmpdir)
@@ -772,6 +895,23 @@ class ServeBootstrapTests(unittest.TestCase):
                         "line_url": "https://gitlab.example.com/proj/-/blob/release/Dockerfile#L2",
                         "data": "foo",
                     },
+                    {
+                        "result_type": "commit",
+                        "word": "foo",
+                        "branch": "release/2026-q2",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "abcdef12",
+                        "line_url": "https://gitlab.example.com/proj/-/commit/abcdef123456",
+                        "data": "needle body",
+                        "commit_id": "abcdef123456",
+                        "commit_short_id": "abcdef12",
+                        "commit_title": "Needle commit",
+                        "commit_author_name": "Ada",
+                        "commit_author_email": "ada@example.com",
+                        "commit_message": "Needle commit\n\nneedle body",
+                    },
                 ],
             )
             app = ServeApplication.__new__(ServeApplication)
@@ -800,6 +940,39 @@ class ServeBootstrapTests(unittest.TestCase):
             self.assertEqual(response["payload"]["rows"][0]["file_name"], "Dockerfile")
             self.assertEqual(response["payload"]["filter_options"]["branches"], ["main", "release/2026-q2"])
 
+            app._handle_job_results(
+                DummyRequest(),
+                {"user": {"identity": "user-1"}, "session_id": "session-1"},
+                "job-handler",
+                {
+                    "q": ["foo"],
+                    "keyword": ["foo"],
+                    "branch": ["release/2026-q2"],
+                    "result_type": ["commit"],
+                    "author": ["Ada <ada@example.com>"],
+                    "content": ["needle"],
+                    "page": ["1"],
+                    "page_size": ["1"],
+                },
+            )
+
+            self.assertEqual(response["payload"]["total_count"], 1)
+            self.assertEqual(response["payload"]["rows"][0]["result_type"], "commit")
+            self.assertEqual(response["payload"]["filter_options"]["keywords"], ["foo"])
+            self.assertEqual(response["payload"]["filter_options"]["authors"], ["Ada <ada@example.com>"])
+
+            app._handle_job_results(
+                DummyRequest(),
+                {"user": {"identity": "user-1"}, "session_id": "session-1"},
+                "job-handler",
+                {"keyword": ["missing"], "page": ["99"], "page_size": ["100"]},
+            )
+
+            self.assertEqual(response["payload"]["total_count"], 0)
+            self.assertEqual(response["payload"]["page"], 1)
+            self.assertEqual(response["payload"]["total_pages"], 1)
+            self.assertEqual(response["payload"]["rows"], [])
+
 
 class WebUiHtmlTests(unittest.TestCase):
     def test_build_app_html_contains_workbench_views(self) -> None:
@@ -817,8 +990,19 @@ class WebUiHtmlTests(unittest.TestCase):
         self.assertIn("结果筛选", html)
         self.assertIn("result-filter-option", html)
         self.assertIn("renderResultPagination", html)
+        self.assertIn("result-page-button", html)
+        self.assertIn("if (kind === 'keyword') return '关键字'", html)
+        self.assertIn("renderResultFilterControl('keyword')", html)
+        self.assertIn("renderResultFilterControl('file_type')", html)
+        self.assertIn("renderResultFilterControl('author')", html)
+        self.assertIn("命中内容", html)
+        self.assertIn("id=\"result-content-filter\"", html)
+        self.assertIn("keyword", html)
+        self.assertIn("author", html)
+        self.assertIn("content", html)
         self.assertIn("file_type", html)
         self.assertIn("page_size", html)
+        self.assertNotIn("按关键字、项目、文件、作者或命中内容查找", html)
 
 
 if __name__ == "__main__":

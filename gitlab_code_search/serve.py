@@ -411,9 +411,12 @@ class ServeApplication:
     ) -> None:
         self._get_owned_job(user_ctx, job_id)
         query = params.get("q", [""])[0]
+        keywords = _query_values(params, "keyword")
         branches = _query_values(params, "branch")
         file_types = [normalize_result_file_type(value) for value in _query_values(params, "file_type")]
         result_types = _query_values(params, "result_type")
+        authors = _query_values(params, "author")
+        content = params.get("content", [""])[0]
         invalid_result_types = [value for value in result_types if value not in SUPPORTED_RESULT_TYPES]
         if invalid_result_types:
             raise StartupError("结果类型非法。")
@@ -428,9 +431,12 @@ class ServeApplication:
             query=query or None,
             limit=page_size,
             offset=offset,
+            keywords=keywords,
             branches=branches,
             file_types=file_types,
             result_types=result_types,
+            authors=authors,
+            content=content or None,
         )
         total_pages = max(1, (total_count + page_size - 1) // page_size)
         if page > total_pages:
@@ -441,9 +447,12 @@ class ServeApplication:
                 query=query or None,
                 limit=page_size,
                 offset=offset,
+                keywords=keywords,
                 branches=branches,
                 file_types=file_types,
                 result_types=result_types,
+                authors=authors,
+                content=content or None,
             )
         self.store.add_audit_log(
             user_identity=user_ctx["user"]["identity"],
@@ -452,8 +461,9 @@ class ServeApplication:
             target_type="job",
             target_id=job_id,
             summary=(
-                f"query={query}; branches={branches}; file_types={file_types}; "
-                f"result_types={result_types}; page={page}; page_size={page_size}"
+                f"query={query}; keywords={keywords}; branches={branches}; file_types={file_types}; "
+                f"result_types={result_types}; authors={authors}; content={content}; "
+                f"page={page}; page_size={page_size}"
             ),
             status="success",
             remote_addr=request.client_address[0] if request.client_address else None,
