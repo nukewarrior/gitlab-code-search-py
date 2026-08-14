@@ -27,6 +27,14 @@ def result_file_type(file_name: str, result_type: str = "code") -> str:
     return suffix or RESULT_FILE_TYPE_NONE
 
 
+def result_author_label(name: str | None, email: str | None) -> str:
+    normalized_name = str(name or "").strip()
+    normalized_email = str(email or "").strip()
+    if normalized_name and normalized_email:
+        return f"{normalized_name} <{normalized_email}>"
+    return normalized_name or normalized_email
+
+
 def utc_now() -> str:
     from datetime import datetime, timezone
 
@@ -182,6 +190,7 @@ class ServeStore:
         conn = sqlite3.connect(self.db_path, factory=ClosingConnection)
         conn.row_factory = sqlite3.Row
         conn.create_function("result_file_type", 2, result_file_type)
+        conn.create_function("result_author_label", 2, result_author_label)
         return conn
 
     def ensure_local_credential_backend(self) -> tuple[bool, str | None, int]:
@@ -448,12 +457,17 @@ class ServeStore:
         *,
         limit: int = 100,
         offset: int = 0,
+        keywords: list[str] | None = None,
         branches: list[str] | None = None,
         file_types: list[str] | None = None,
         result_types: list[str] | None = None,
+        authors: list[str] | None = None,
+        content: str | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         where_sql = "job_id = ?"
         params: list[Any] = [job_id]
+        keywords = [str(value).strip() for value in (keywords or []) if str(value).strip()]
+        authors = [str(value).strip() for value in (authors or []) if str(value).strip()]
         file_types = [normalize_result_file_type(value) for value in (file_types or [])]
         if query:
             like = f"%{query}%"
@@ -463,6 +477,10 @@ class ServeStore:
                 " OR commit_author_name LIKE ? OR commit_author_email LIKE ? OR commit_message LIKE ?)"
             )
             params.extend([like] * 13)
+        if keywords:
+            placeholders = ", ".join("?" for _ in keywords)
+            where_sql += f" AND word IN ({placeholders})"
+            params.extend(keywords)
         if branches:
             placeholders = ", ".join("?" for _ in branches)
             where_sql += f" AND branch IN ({placeholders})"
@@ -475,6 +493,14 @@ class ServeStore:
             placeholders = ", ".join("?" for _ in file_types)
             where_sql += f" AND (result_type != 'code' OR result_file_type(file_name, result_type) IN ({placeholders}))"
             params.extend(file_types)
+        if authors:
+            placeholders = ", ".join("?" for _ in authors)
+            where_sql += f" AND result_author_label(commit_author_name, commit_author_email) IN ({placeholders})"
+            params.extend(authors)
+        if content:
+            like = f"%{content}%"
+            where_sql += " AND (data LIKE ? OR commit_title LIKE ? OR commit_message LIKE ?)"
+            params.extend([like] * 3)
         count_sql = f"SELECT COUNT(*) FROM job_results WHERE {where_sql}"
         rows_sql = f"SELECT * FROM job_results WHERE {where_sql} ORDER BY row_index LIMIT ? OFFSET ?"
         with self._connect() as conn:
@@ -484,6 +510,10 @@ class ServeStore:
 
     def list_job_result_filter_options(self, job_id: str) -> dict[str, list[str]]:
         with self._connect() as conn:
+            keyword_rows = conn.execute(
+                "SELECT DISTINCT word FROM job_results WHERE job_id = ? AND word != ''",
+                (job_id,),
+            ).fetchall()
             branch_rows = conn.execute(
                 "SELECT DISTINCT branch FROM job_results WHERE job_id = ? AND branch != ''",
                 (job_id,),
@@ -500,18 +530,30 @@ class ServeStore:
                 "SELECT DISTINCT result_type FROM job_results WHERE job_id = ?",
                 (job_id,),
             ).fetchall()
+            author_rows = conn.execute(
+                """
+                SELECT DISTINCT result_author_label(commit_author_name, commit_author_email) AS author
+                FROM job_results
+                WHERE job_id = ? AND result_type = 'commit'
+                """,
+                (job_id,),
+            ).fetchall()
 
+        keywords = sorted({str(row["word"]) for row in keyword_rows}, key=str.casefold)
         branches = sorted({str(row["branch"]) for row in branch_rows}, key=str.casefold)
         file_types = sorted(
             {str(row["file_type"]) for row in file_type_rows if row["file_type"]},
             key=lambda value: (value == RESULT_FILE_TYPE_NONE, value),
         )
+        authors = sorted({str(row["author"]) for row in author_rows if row["author"]}, key=str.casefold)
         available_types = {str(row["result_type"]) for row in result_type_rows}
         result_types = [result_type for result_type in SUPPORTED_RESULT_TYPES if result_type in available_types]
         return {
+            "keywords": keywords,
             "branches": branches,
             "file_types": file_types,
             "result_types": result_types,
+            "authors": authors,
         }
 
     def mark_unfinished_jobs_interrupted(self) -> None:

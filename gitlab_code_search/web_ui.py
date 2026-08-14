@@ -471,10 +471,11 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     }
     .result-filter-grid {
       display: grid;
-      grid-template-columns: minmax(260px, 1.35fr) repeat(3, minmax(170px, .8fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
       align-items: end;
     }
+    .result-filter-content-control { min-width: 0; }
     .result-filter-control { position: relative; min-width: 0; }
     .result-filter-trigger {
       width: 100%;
@@ -733,13 +734,15 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       completedJobs: [],
       resultTask: null,
       resultRows: [],
-      resultFilter: '',
-      resultFilterOptions: { branches: [], file_types: [], result_types: [] },
+      resultContentFilter: '',
+      resultFilterOptions: { keywords: [], branches: [], file_types: [], result_types: [], authors: [] },
+      resultSelectedKeywords: [],
       resultSelectedBranches: [],
       resultSelectedFileTypes: [],
       resultSelectedTypes: [],
-      resultFilterMenus: { branch: false, file_type: false, result_type: false },
-      resultFilterOptionQueries: { branch: '', file_type: '', result_type: '' },
+      resultSelectedAuthors: [],
+      resultFilterMenus: { keyword: false, branch: false, file_type: false, result_type: false, author: false },
+      resultFilterOptionQueries: { keyword: '', branch: '', file_type: '', result_type: '', author: '' },
       resultPage: 1,
       resultPageSize: 100,
       resultTotalCount: 0,
@@ -785,24 +788,32 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       return value;
     }
     function resultFilterTitle(kind) {
+      if (kind === 'keyword') return '关键字';
       if (kind === 'branch') return '分支';
       if (kind === 'file_type') return '文件类型';
-      return '结果类型';
+      if (kind === 'result_type') return '结果类型';
+      return '作者';
     }
     function resultFilterOptionsFor(kind) {
+      if (kind === 'keyword') return state.resultFilterOptions.keywords || [];
       if (kind === 'branch') return state.resultFilterOptions.branches || [];
       if (kind === 'file_type') return state.resultFilterOptions.file_types || [];
-      return state.resultFilterOptions.result_types || [];
+      if (kind === 'result_type') return state.resultFilterOptions.result_types || [];
+      return state.resultFilterOptions.authors || [];
     }
     function resultFilterSelectionFor(kind) {
+      if (kind === 'keyword') return state.resultSelectedKeywords;
       if (kind === 'branch') return state.resultSelectedBranches;
       if (kind === 'file_type') return state.resultSelectedFileTypes;
-      return state.resultSelectedTypes;
+      if (kind === 'result_type') return state.resultSelectedTypes;
+      return state.resultSelectedAuthors;
     }
     function setResultFilterSelection(kind, values) {
-      if (kind === 'branch') state.resultSelectedBranches = values;
+      if (kind === 'keyword') state.resultSelectedKeywords = values;
+      else if (kind === 'branch') state.resultSelectedBranches = values;
       else if (kind === 'file_type') state.resultSelectedFileTypes = values;
-      else state.resultSelectedTypes = values;
+      else if (kind === 'result_type') state.resultSelectedTypes = values;
+      else state.resultSelectedAuthors = values;
     }
     function normalizeResultFileTypeValue(value) {
       const normalized = String(value || '').trim().toLowerCase().replace(/^\\./, '');
@@ -816,10 +827,12 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     }
     function resultFilterHasAny() {
       return Boolean(
-        state.resultFilter.trim()
+        state.resultContentFilter.trim()
+        || state.resultSelectedKeywords.length
         || state.resultSelectedBranches.length
         || state.resultSelectedFileTypes.length
         || state.resultSelectedTypes.length
+        || state.resultSelectedAuthors.length
       );
     }
     function renderResultFilterControl(kind) {
@@ -835,15 +848,15 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       return `
         <div class="result-filter-control">
           <span class="label">${title}</span>
-          <button type="button" class="result-filter-trigger" aria-label="${title}筛选，${esc(resultFilterSelectionSummary(kind))}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="result-filter-popover-${kind}" onclick="toggleResultFilterMenu('${kind}')">
+          <button type="button" id="result-filter-trigger-${kind}" data-result-focus-target="true" class="result-filter-trigger" aria-label="${title}筛选，${esc(resultFilterSelectionSummary(kind))}" aria-expanded="${open ? 'true' : 'false'}" aria-controls="result-filter-popover-${kind}" onclick="toggleResultFilterMenu('${kind}')">
             <span class="result-filter-trigger-copy"><strong>${esc(resultFilterSelectionSummary(kind))}</strong><small>${selected.size ? '已应用筛选' : '未限制'}</small></span>
             <span class="result-filter-chevron" aria-hidden="true">${open ? '⌃' : '⌄'}</span>
           </button>
           ${open ? `
-            <div class="result-filter-popover" id="result-filter-popover-${kind}" role="dialog" aria-label="${title}筛选">
+            <div class="result-filter-popover" id="result-filter-popover-${kind}" role="region" aria-label="${title}筛选">
               <div class="result-filter-popover-head"><strong>选择${title}</strong><button type="button" class="result-filter-close" onclick="toggleResultFilterMenu('${kind}')">完成</button></div>
               <label class="label" for="${searchId}">搜索${title}</label>
-              <input class="input result-filter-search" id="${searchId}" data-result-filter-option-search="true" data-filter-kind="${kind}" value="${esc(state.resultFilterOptionQueries[kind] || '')}" placeholder="输入名称查找" />
+              <input class="input result-filter-search" id="${searchId}" data-result-filter-option-search="true" data-filter-kind="${kind}" value="${esc(state.resultFilterOptionQueries[kind] || '')}" placeholder="输入名称查找" autocomplete="off" spellcheck="false" />
               <div class="result-filter-options">
                 ${options.length
                   ? options.map((value, index) => `<label class="result-filter-option"><input id="result-filter-option-${kind}-${index}" type="checkbox" data-result-filter-option="true" data-filter-kind="${kind}" data-filter-value="${esc(value)}" ${selected.has(value) ? 'checked' : ''} /><span>${esc(resultFilterOptionLabel(kind, value))}</span></label>`).join('')
@@ -854,10 +867,12 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     }
     function resultActiveFilterEntries() {
       const entries = [];
-      if (state.resultFilter.trim()) entries.push({ kind: 'query', value: state.resultFilter.trim(), label: '全文：' + state.resultFilter.trim() });
+      if (state.resultContentFilter.trim()) entries.push({ kind: 'content', value: state.resultContentFilter.trim(), label: '命中内容：' + state.resultContentFilter.trim() });
+      state.resultSelectedKeywords.forEach((value) => entries.push({ kind: 'keyword', value, label: '关键字：' + value }));
       state.resultSelectedBranches.forEach((value) => entries.push({ kind: 'branch', value, label: '分支：' + value }));
       state.resultSelectedFileTypes.forEach((value) => entries.push({ kind: 'file_type', value, label: '类型：' + resultFilterOptionLabel('file_type', value) }));
       state.resultSelectedTypes.forEach((value) => entries.push({ kind: 'result_type', value, label: '结果：' + resultFilterOptionLabel('result_type', value) }));
+      state.resultSelectedAuthors.forEach((value) => entries.push({ kind: 'author', value, label: '作者：' + value }));
       return entries;
     }
     function renderResultActiveFilters() {
@@ -867,10 +882,12 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     }
     function resultFilterQueryString() {
       const params = new URLSearchParams();
-      if (state.resultFilter.trim()) params.set('q', state.resultFilter.trim());
+      state.resultSelectedKeywords.forEach((value) => params.append('keyword', value));
       state.resultSelectedBranches.forEach((value) => params.append('branch', value));
       state.resultSelectedFileTypes.forEach((value) => params.append('file_type', value));
       state.resultSelectedTypes.forEach((value) => params.append('result_type', value));
+      state.resultSelectedAuthors.forEach((value) => params.append('author', value));
+      if (state.resultContentFilter.trim()) params.set('content', state.resultContentFilter.trim());
       params.set('page', String(state.resultPage));
       params.set('page_size', String(state.resultPageSize));
       return params.toString();
@@ -885,23 +902,27 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       return { jobId: decodeURIComponent(encodedJobId), params: new URLSearchParams(query) };
     }
     function applyResultHashState(params) {
-      state.resultFilter = params.get('q') || '';
+      state.resultContentFilter = params.get('content') || '';
+      state.resultSelectedKeywords = params.getAll('keyword');
       state.resultSelectedBranches = params.getAll('branch');
       state.resultSelectedFileTypes = params.getAll('file_type').map(normalizeResultFileTypeValue);
       state.resultSelectedTypes = params.getAll('result_type');
+      state.resultSelectedAuthors = params.getAll('author');
       const pageSize = Number(params.get('page_size') || 100);
       state.resultPageSize = [50, 100, 200].includes(pageSize) ? pageSize : 100;
       state.resultPage = Math.max(1, Number(params.get('page') || 1) || 1);
-      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
-      state.resultFilterOptionQueries = { branch: '', file_type: '', result_type: '' };
+      state.resultFilterMenus = { keyword: false, branch: false, file_type: false, result_type: false, author: false };
+      state.resultFilterOptionQueries = { keyword: '', branch: '', file_type: '', result_type: '', author: '' };
     }
     function resetResultFilters() {
-      state.resultFilter = '';
+      state.resultContentFilter = '';
+      state.resultSelectedKeywords = [];
       state.resultSelectedBranches = [];
       state.resultSelectedFileTypes = [];
       state.resultSelectedTypes = [];
-      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
-      state.resultFilterOptionQueries = { branch: '', file_type: '', result_type: '' };
+      state.resultSelectedAuthors = [];
+      state.resultFilterMenus = { keyword: false, branch: false, file_type: false, result_type: false, author: false };
+      state.resultFilterOptionQueries = { keyword: '', branch: '', file_type: '', result_type: '', author: '' };
       state.resultPage = 1;
       state.resultPageSize = 100;
     }
@@ -1153,7 +1174,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       if (!task) return;
       state.resultTask = task;
       resetResultFilters();
-      state.resultFilterOptions = { branches: [], file_types: [], result_types: [] };
+      state.resultFilterOptions = { keywords: [], branches: [], file_types: [], result_types: [], authors: [] };
       state.resultTotalCount = Number(task.result_count || 0);
       state.resultTotalPages = Math.max(1, Math.ceil(state.resultTotalCount / state.resultPageSize));
       state.view = 'result-detail';
@@ -1164,10 +1185,12 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     }
     function resultRequestParams() {
       const params = new URLSearchParams();
-      if (state.resultFilter.trim()) params.set('q', state.resultFilter.trim());
+      state.resultSelectedKeywords.forEach((value) => params.append('keyword', value));
       state.resultSelectedBranches.forEach((value) => params.append('branch', value));
       state.resultSelectedFileTypes.forEach((value) => params.append('file_type', value));
       state.resultSelectedTypes.forEach((value) => params.append('result_type', value));
+      state.resultSelectedAuthors.forEach((value) => params.append('author', value));
+      if (state.resultContentFilter.trim()) params.set('content', state.resultContentFilter.trim());
       params.set('page', String(state.resultPage));
       params.set('page_size', String(state.resultPageSize));
       return params;
@@ -1184,11 +1207,11 @@ def build_app_html(default_gitlab_url: str = "") -> str:
         state.resultPage = Number(payload.page || state.resultPage || 1);
         state.resultPageSize = Number(payload.page_size || state.resultPageSize || 100);
         state.resultTotalPages = Number(payload.total_pages || Math.max(1, Math.ceil(state.resultTotalCount / state.resultPageSize)));
-        state.resultFilterOptions = payload.filter_options || { branches: [], file_types: [], result_types: [] };
+        state.resultFilterOptions = payload.filter_options || { keywords: [], branches: [], file_types: [], result_types: [], authors: [] };
         setResultHash(taskId, { replace: true });
         state.__resultHash = window.location.hash;
         render();
-        if (options.restoreFocus) restoreInputFocus('result-filter', options.selectionStart, options.selectionEnd);
+        if (options.restoreFocus) restoreInputFocus('result-content-filter', options.selectionStart, options.selectionEnd);
       } catch (err) { toast(err.message); }
     }
     async function setResultPage(page) {
@@ -1244,13 +1267,13 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       return `
         <nav class="result-pagination" aria-label="结果分页">
           <div class="result-pagination-controls">
-            <button type="button" class="result-page-button" onclick="setResultPage(1)" ${disabledFirst}>首页</button>
-            <button type="button" class="result-page-button" onclick="setResultPage(${currentPage - 1})" ${disabledFirst}>上一页</button>
+            <button type="button" id="result-page-${position}-first" data-result-focus-target="true" class="result-page-button" onclick="setResultPage(1)" ${disabledFirst}>首页</button>
+            <button type="button" id="result-page-${position}-previous" data-result-focus-target="true" class="result-page-button" onclick="setResultPage(${currentPage - 1})" ${disabledFirst}>上一页</button>
             ${resultPageItems().map((item) => typeof item === 'number'
-              ? `<button type="button" class="result-page-button ${item === currentPage ? 'current' : ''}" onclick="setResultPage(${item})" ${item === currentPage ? 'aria-current="page"' : ''}>${item}</button>`
+              ? `<button type="button" id="result-page-${position}-${item}" data-result-focus-target="true" class="result-page-button ${item === currentPage ? 'current' : ''}" onclick="setResultPage(${item})" ${item === currentPage ? 'aria-current="page"' : ''}>${item}</button>`
               : `<span class="result-page-ellipsis" aria-hidden="true">…</span>`).join('')}
-            <button type="button" class="result-page-button" onclick="setResultPage(${currentPage + 1})" ${disabledLast}>下一页</button>
-            <button type="button" class="result-page-button" onclick="setResultPage(${totalPages})" ${disabledLast}>末页</button>
+            <button type="button" id="result-page-${position}-next" data-result-focus-target="true" class="result-page-button" onclick="setResultPage(${currentPage + 1})" ${disabledLast}>下一页</button>
+            <button type="button" id="result-page-${position}-last" data-result-focus-target="true" class="result-page-button" onclick="setResultPage(${totalPages})" ${disabledLast}>末页</button>
           </div>
           <div class="result-page-jump">
             <form data-result-page-jump="${position}">
@@ -1259,7 +1282,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
               <span class="result-page-jump-label">/ ${totalPages} 页</span>
             </form>
             <label class="result-page-size-label" for="result-page-size-${position}">每页</label>
-            <select class="select" id="result-page-size-${position}" data-result-page-size="true" aria-label="每页显示数量">
+            <select class="select" id="result-page-size-${position}" data-result-page-size="true" data-result-focus-target="true" aria-label="每页显示数量">
               ${[50, 100, 200].map((size) => `<option value="${size}" ${state.resultPageSize === size ? 'selected' : ''}>${size} 条</option>`).join('')}
             </select>
           </div>
@@ -1267,7 +1290,8 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     }
     function toggleResultFilterMenu(kind) {
       const wasOpen = Boolean(state.resultFilterMenus[kind]);
-      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
+      state.__resultFocusTarget = 'result-filter-trigger-' + kind;
+      state.resultFilterMenus = { keyword: false, branch: false, file_type: false, result_type: false, author: false };
       state.resultFilterMenus[kind] = !wasOpen;
       render();
     }
@@ -1284,8 +1308,8 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       refreshResultRows();
     }
     function removeResultFilter(kind, value) {
-      if (kind === 'query') {
-        state.resultFilter = '';
+      if (kind === 'content') {
+        state.resultContentFilter = '';
       } else {
         setResultFilterSelection(kind, resultFilterSelectionFor(kind).filter((item) => item !== value));
       }
@@ -1296,12 +1320,14 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     }
     function clearResultFilters() {
       if (!state.resultTask) return;
-      state.resultFilter = '';
+      state.resultContentFilter = '';
+      state.resultSelectedKeywords = [];
       state.resultSelectedBranches = [];
       state.resultSelectedFileTypes = [];
       state.resultSelectedTypes = [];
-      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
-      state.resultFilterOptionQueries = { branch: '', file_type: '', result_type: '' };
+      state.resultSelectedAuthors = [];
+      state.resultFilterMenus = { keyword: false, branch: false, file_type: false, result_type: false, author: false };
+      state.resultFilterOptionQueries = { keyword: '', branch: '', file_type: '', result_type: '', author: '' };
       state.resultPage = 1;
       setResultHash(state.resultTask.id);
       render();
@@ -1675,15 +1701,17 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                     <span class="metric-pill">筛选后 ${esc(state.resultTotalCount)} 条</span>
                   </div>
                   <div class="result-filter-grid">
-                    <div class="field" style="margin-top:0;">
-                      <label class="label" for="result-filter">全文检索</label>
-                      <input class="input" id="result-filter" value="${esc(state.resultFilter)}" placeholder="按关键字、项目、文件、作者或命中内容查找" aria-describedby="result-filter-help" />
-                    </div>
+                    ${renderResultFilterControl('keyword')}
                     ${renderResultFilterControl('branch')}
                     ${renderResultFilterControl('file_type')}
                     ${renderResultFilterControl('result_type')}
+                    ${renderResultFilterControl('author')}
+                    <div class="field result-filter-content-control" style="margin-top:0;">
+                      <label class="label" for="result-content-filter">命中内容</label>
+                      <input class="input" id="result-content-filter" value="${esc(state.resultContentFilter)}" placeholder="匹配代码命中内容、提交标题或提交信息" aria-describedby="result-filter-help" autocomplete="off" spellcheck="false" />
+                    </div>
                   </div>
-                  <div id="result-filter-help" class="result-filter-note">分支和结果类型支持多选；文件类型按精确扩展名匹配。${state.resultSelectedFileTypes.length ? '提交记录不会因文件类型条件被隐藏，可通过结果类型单独控制。' : ''}</div>
+                  <div id="result-filter-help" class="result-filter-note">关键字、分支、文件类型、结果类型和作者支持多选；命中内容支持包含检索。文件类型只过滤代码结果，提交记录请通过结果类型控制。</div>
                   <div class="result-active-filters">${renderResultActiveFilters()}</div>
                 </div>
                 <div class="result-toolbar-meta" role="status" aria-live="polite">
@@ -1813,7 +1841,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       const branchName = document.getElementById('branch-name');
       const keywords = document.getElementById('keywords');
       const projectQuery = document.getElementById('project-query');
-      const resultFilter = document.getElementById('result-filter');
+      const resultContentFilter = document.getElementById('result-content-filter');
       const resultBatchQuery = document.getElementById('result-batch-query');
       const settingsDefaultGitlab = document.getElementById('settings-default-gitlab');
       if (loginToken) state.login.token = loginToken.value;
@@ -1822,7 +1850,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       if (branchName) state.search.branchName = branchName.value;
       if (keywords) state.search.keywords = keywords.value;
       if (projectQuery) state.search.projectQuery = projectQuery.value;
-      if (resultFilter) state.resultFilter = resultFilter.value;
+      if (resultContentFilter) state.resultContentFilter = resultContentFilter.value;
       if (resultBatchQuery) state.resultsQuery = resultBatchQuery.value;
       if (settingsDefaultGitlab && state.settings) state.settings.default_gitlab_url = settingsDefaultGitlab.value;
     }
@@ -1841,6 +1869,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     function getFocusedInputState() {
       const active = document.activeElement;
       if (!active || !active.id) return null;
+      if (active.matches && active.matches('[data-result-focus-target="true"]')) return { id: active.id, focusOnly: true };
       if (!(active instanceof HTMLInputElement) && !(active instanceof HTMLTextAreaElement)) return null;
       if (active instanceof HTMLInputElement && active.type === 'checkbox') return { id: active.id, focusOnly: true };
       return {
@@ -1864,7 +1893,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       const branchName = document.getElementById('branch-name');
       const keywords = document.getElementById('keywords');
       const projectQuery = document.getElementById('project-query');
-      const resultFilter = document.getElementById('result-filter');
+      const resultContentFilter = document.getElementById('result-content-filter');
       const resultBatchQuery = document.getElementById('result-batch-query');
       const settingsDefaultGitlab = document.getElementById('settings-default-gitlab');
       if (loginToken) loginToken.addEventListener('input', (e) => { state.login.token = e.target.value; });
@@ -1883,14 +1912,14 @@ def build_app_html(default_gitlab_url: str = "") -> str:
           }, 180);
         });
       }
-      if (resultFilter) {
-        resultFilter.addEventListener('input', (e) => {
-          state.resultFilter = e.target.value;
+      if (resultContentFilter) {
+        resultContentFilter.addEventListener('input', (e) => {
+          state.resultContentFilter = e.target.value;
           state.resultPage = 1;
-          clearTimeout(window.__resultFilterTimer);
+          clearTimeout(window.__resultContentFilterTimer);
           const selectionStart = e.target.selectionStart ?? e.target.value.length;
           const selectionEnd = e.target.selectionEnd ?? selectionStart;
-          window.__resultFilterTimer = setTimeout(() => {
+          window.__resultContentFilterTimer = setTimeout(() => {
             if (state.resultTask) setResultHash(state.resultTask.id, { replace: true });
             refreshResultRows({ restoreFocus: true, selectionStart, selectionEnd });
           }, 140);
@@ -1953,7 +1982,10 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     function togglePatGuideExpanded(){ state.patGuideExpanded = !state.patGuideExpanded; render(); }
     function setBranchMode(mode){ state.search.branchMode = mode; render(); }
     function render() {
-      const focusedInput = getFocusedInputState();
+      const focusedInput = state.__resultFocusTarget
+        ? { id: state.__resultFocusTarget, focusOnly: true }
+        : getFocusedInputState();
+      state.__resultFocusTarget = '';
       document.getElementById('app').innerHTML = renderApp() + (state.toast ? `<div class="toast">${esc(state.toast)}</div>` : '');
       syncInputs();
       if (focusedInput) restoreInputFocus(focusedInput.id, focusedInput.selectionStart, focusedInput.selectionEnd);
@@ -1980,7 +2012,9 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
       if (!Object.values(state.resultFilterMenus).some(Boolean)) return;
-      state.resultFilterMenus = { branch: false, file_type: false, result_type: false };
+      const openKind = Object.keys(state.resultFilterMenus).find((kind) => state.resultFilterMenus[kind]);
+      if (openKind) state.__resultFocusTarget = 'result-filter-trigger-' + openKind;
+      state.resultFilterMenus = { keyword: false, branch: false, file_type: false, result_type: false, author: false };
       render();
     });
     (async function init(){
