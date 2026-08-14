@@ -18,6 +18,7 @@ from .gitlab_api import GitLabClient
 from .search_service import SUPPORTED_SEARCH_TARGETS, SearchRequest, execute_search, normalize_search_targets
 from .serve_store import (
     LOCAL_CREDENTIAL_BACKEND,
+    RESULT_CONTENT_PREVIEW_LIMIT,
     SUPPORTED_RESULT_TYPES,
     ServeStore,
     normalize_result_file_type,
@@ -205,6 +206,17 @@ class ServeApplication:
         if path.startswith("/api/jobs/") and path.endswith("/cancel") and method == "POST":
             job_id = path.split("/")[3]
             self._handle_cancel_job(request, user_ctx, job_id)
+            return
+        if path.startswith("/api/jobs/") and "/results/" in path and method == "GET":
+            parts = path.split("/")
+            if len(parts) != 6 or parts[4] != "results":
+                raise StartupError("结果地址非法。")
+            job_id = parts[3]
+            try:
+                row_index = int(parts[5])
+            except ValueError as exc:
+                raise StartupError("结果行号非法。") from exc
+            self._handle_job_result(request, user_ctx, job_id, row_index)
             return
         if path.startswith("/api/jobs/") and path.endswith("/results") and method == "GET":
             job_id = path.split("/")[3]
@@ -417,6 +429,7 @@ class ServeApplication:
         result_types = _query_values(params, "result_type")
         authors = _query_values(params, "author")
         content = params.get("content", [""])[0]
+        preview_requested = params.get("content_preview", [""])[0] == "1"
         invalid_result_types = [value for value in result_types if value not in SUPPORTED_RESULT_TYPES]
         if invalid_result_types:
             raise StartupError("结果类型非法。")
@@ -437,6 +450,7 @@ class ServeApplication:
             result_types=result_types,
             authors=authors,
             content=content or None,
+            content_preview_chars=RESULT_CONTENT_PREVIEW_LIMIT if preview_requested else None,
         )
         total_pages = max(1, (total_count + page_size - 1) // page_size)
         if page > total_pages:
@@ -453,6 +467,7 @@ class ServeApplication:
                 result_types=result_types,
                 authors=authors,
                 content=content or None,
+                content_preview_chars=RESULT_CONTENT_PREVIEW_LIMIT if preview_requested else None,
             )
         self.store.add_audit_log(
             user_identity=user_ctx["user"]["identity"],
@@ -481,6 +496,17 @@ class ServeApplication:
                 "filter_options": self.store.list_job_result_filter_options(job_id),
             },
         )
+
+    def _handle_job_result(
+        self, request: BaseHTTPRequestHandler, user_ctx: dict[str, Any], job_id: str, row_index: int
+    ) -> None:
+        self._get_owned_job(user_ctx, job_id)
+        if row_index < 0:
+            raise StartupError("结果行号非法。")
+        row = self.store.get_job_result(job_id, row_index)
+        if row is None:
+            raise FileNotFoundError("结果不存在。")
+        self._respond_json(request, HTTPStatus.OK, {"row": row})
 
     def _handle_download_export(
         self, request: BaseHTTPRequestHandler, user_ctx: dict[str, Any], job_id: str, fmt: str

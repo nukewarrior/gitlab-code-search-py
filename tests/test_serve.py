@@ -847,6 +847,17 @@ class ServeBootstrapTests(unittest.TestCase):
             self.assertEqual(options["keywords"], ["bar", "baz", "foo"])
             self.assertEqual(options["authors"], ["Ada <ada@example.com>", "Bot"])
 
+            preview_rows, preview_total = store.list_job_results_page(
+                "job-field-filters",
+                limit=10,
+                content_preview_chars=6,
+            )
+            self.assertEqual(preview_total, 4)
+            self.assertEqual(preview_rows[0]["content_preview"], "needle")
+            self.assertEqual(preview_rows[0]["content_length"], len("needle in code"))
+            self.assertEqual(preview_rows[0]["content_truncated"], 1)
+            self.assertNotIn("data", preview_rows[0])
+
     def test_result_handler_accepts_repeated_filter_parameters(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = ServeStore(tmpdir)
@@ -931,6 +942,7 @@ class ServeBootstrapTests(unittest.TestCase):
                     "result_type": ["code"],
                     "page": ["2"],
                     "page_size": ["1"],
+                    "content_preview": ["1"],
                 },
             )
 
@@ -938,6 +950,7 @@ class ServeBootstrapTests(unittest.TestCase):
             self.assertEqual(response["payload"]["total_count"], 2)
             self.assertEqual(response["payload"]["page"], 2)
             self.assertEqual(response["payload"]["rows"][0]["file_name"], "Dockerfile")
+            self.assertNotIn("data", response["payload"]["rows"][0])
             self.assertEqual(response["payload"]["filter_options"]["branches"], ["main", "release/2026-q2"])
 
             app._handle_job_results(
@@ -973,6 +986,14 @@ class ServeBootstrapTests(unittest.TestCase):
             self.assertEqual(response["payload"]["total_pages"], 1)
             self.assertEqual(response["payload"]["rows"], [])
 
+            app._handle_job_result(
+                DummyRequest(),
+                {"user": {"identity": "user-1"}, "session_id": "session-1"},
+                "job-handler",
+                2,
+            )
+            self.assertEqual(response["payload"]["row"]["data"], "needle body")
+
 
 class WebUiHtmlTests(unittest.TestCase):
     def test_build_app_html_contains_workbench_views(self) -> None:
@@ -1002,6 +1023,11 @@ class WebUiHtmlTests(unittest.TestCase):
         self.assertIn("content", html)
         self.assertIn("file_type", html)
         self.assertIn("page_size", html)
+        self.assertIn("content_preview", html)
+        self.assertIn("openResultContent", html)
+        self.assertIn("result-content-modal", html)
+        self.assertIn("table-layout: fixed", html)
+        self.assertNotIn("min-width: 1480px", html)
         self.assertNotIn("按关键字、项目、文件、作者或命中内容查找", html)
 
 

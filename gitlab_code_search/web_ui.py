@@ -434,6 +434,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     .result-card { padding: 18px; display: grid; gap: 12px; }
     .result-card.active { border-color: rgba(15,109,141,.22); background: rgba(15,109,141,.06); }
     .result-metrics { display: flex; flex-wrap: wrap; gap: 8px; }
+    .detail-layout, .detail-card { min-width: 0; }
     .detail-layout { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: 16px; align-items: start; }
     .detail-layout.standalone { grid-template-columns: 1fr; }
     .batch-list { display: grid; gap: 10px; }
@@ -597,19 +598,38 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     .summary-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .summary-card { background: rgba(255,255,255,.84); border: 1px solid var(--line); }
     .table-wrap {
-      overflow: auto;
+      min-width: 0;
+      max-width: 100%;
+      overflow-x: auto;
+      overflow-y: visible;
       border-radius: 20px;
       border: 1px solid var(--line);
       background: rgba(255,255,255,.94);
     }
-    .result-table { width: 100%; min-width: 1480px; border-collapse: collapse; font-size: 14px; }
+    .result-table {
+      width: 100%;
+      min-width: 0;
+      table-layout: fixed;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
     .result-table th, .result-table td {
+      min-width: 0;
       padding: 14px 16px;
       text-align: left;
       vertical-align: top;
       border-right: 1px solid rgba(16,24,40,.07);
       border-bottom: 1px solid rgba(16,24,40,.07);
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
+    .result-table th:nth-child(1) { width: 9%; }
+    .result-table th:nth-child(2) { width: 8%; }
+    .result-table th:nth-child(3) { width: 13%; }
+    .result-table th:nth-child(4) { width: 13%; }
+    .result-table th:nth-child(5) { width: 21%; }
+    .result-table th:nth-child(6) { width: 8%; }
+    .result-table th:nth-child(7) { width: 28%; }
     .result-table th:last-child, .result-table td:last-child { border-right: 0; }
     .result-table thead th {
       position: sticky;
@@ -620,6 +640,72 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       font-size: 12px;
       letter-spacing: .12em;
       text-transform: uppercase;
+    }
+    .result-content-cell { min-width: 0; }
+    .result-content-preview {
+      max-width: 100%;
+      color: #314459;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+    .result-content-preview.is-truncated {
+      display: -webkit-box;
+      overflow: hidden;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 5;
+    }
+    .result-content-empty { color: var(--muted-2); }
+    .result-content-more {
+      display: inline-flex;
+      margin-top: 8px;
+      padding: 0;
+      color: var(--accent-strong);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .result-content-more:hover { text-decoration: underline; }
+    .result-content-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+      background: rgba(13,22,37,.46);
+    }
+    .result-content-modal {
+      width: min(920px, 100%);
+      max-height: min(82vh, 760px);
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 16px;
+      padding: 20px;
+      border: 1px solid rgba(255,255,255,.44);
+      border-radius: 24px;
+      background: rgba(255,255,255,.98);
+      box-shadow: 0 28px 90px rgba(13,22,37,.3);
+    }
+    .result-content-modal-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: start;
+    }
+    .result-content-modal-body {
+      min-height: 0;
+      overflow: auto;
+      padding: 16px;
+      border-radius: 16px;
+      background: #f4f8fc;
+      color: #25384e;
+      font-family: "SFMono-Regular", "Menlo", "Monaco", monospace;
+      font-size: 13px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .settings-grid { grid-template-columns: 1.05fr .95fr; align-items: start; }
     .overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -731,10 +817,13 @@ def build_app_html(default_gitlab_url: str = "") -> str:
         selectedProjectIds: []
       },
       jobs: [],
+      jobsSignature: '',
       completedJobs: [],
       resultTask: null,
       resultRows: [],
       resultContentFilter: '',
+      resultContentModal: null,
+      resultContentRequestId: 0,
       resultFilterOptions: { keywords: [], branches: [], file_types: [], result_types: [], authors: [] },
       resultSelectedKeywords: [],
       resultSelectedBranches: [],
@@ -992,10 +1081,51 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       if (row.result_type === 'commit') return row.commit_short_id || row.commit_id || '';
       return row.file_name || '';
     }
-    function resultContentLabel(row) {
+    function resultContentText(row) {
       if (!row) return '';
       if (row.result_type === 'commit') return row.commit_message || row.data || '';
       return row.data || '';
+    }
+    function resultContentLabel(row) {
+      if (!row) return '';
+      if (Object.prototype.hasOwnProperty.call(row, 'content_preview')) return row.content_preview || '';
+      return resultContentText(row);
+    }
+    function resultContentHasMore(row) {
+      if (!row) return false;
+      return Boolean(row.content_truncated) || Number(row.content_length || 0) > String(resultContentLabel(row)).length;
+    }
+    function renderResultContentCell(row, index) {
+      const content = resultContentLabel(row);
+      if (!content) return '<span class="result-content-empty">—</span>';
+      const rowIndex = Number.isInteger(Number(row.row_index)) ? Number(row.row_index) : index;
+      const hasMore = resultContentHasMore(row);
+      return `<div class="result-content-cell"><div class="result-content-preview${hasMore ? ' is-truncated' : ''}">${esc(content)}</div>${hasMore ? `<button type="button" class="result-content-more" onclick="openResultContent(${rowIndex})">查看全部内容</button>` : ''}</div>`;
+    }
+    function renderResultContentModal() {
+      const modal = state.resultContentModal;
+      if (!modal) return '';
+      const row = modal.row || {};
+      const title = resultLocationLabel(row) || '结果内容';
+      const body = modal.loading
+        ? '正在加载完整命中内容...'
+        : modal.error
+          ? modal.error
+          : resultContentText(row) || '没有可显示的命中内容。';
+      return `
+        <div class="result-content-modal-backdrop" role="presentation">
+          <section class="result-content-modal" role="dialog" aria-modal="true" aria-labelledby="result-content-modal-title">
+            <div class="result-content-modal-head">
+              <div class="section-title">
+                <strong id="result-content-modal-title">完整命中内容</strong>
+                <div class="section-copy">${esc(title)} · ${esc(row.project_name || '')}</div>
+              </div>
+              <button type="button" class="btn secondary" onclick="closeResultContent()">关闭</button>
+            </div>
+            <div class="result-content-modal-body">${esc(body)}</div>
+            <div class="section-copy">完整内容按需加载，不会再撑开结果列表。</div>
+          </section>
+        </div>`;
     }
     function resultRoute(jobId) {
       return '/#result/' + encodeURIComponent(jobId);
@@ -1073,9 +1203,11 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       state.me = null;
       state.view = 'search';
       state.jobs = [];
+      state.jobsSignature = '';
       state.completedJobs = [];
       state.resultTask = null;
       state.resultRows = [];
+      state.resultContentModal = null;
       state.settings = null;
       state.auditLogs = [];
       render();
@@ -1098,21 +1230,27 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       if (!state.me) return;
       try {
         const payload = await api('/api/jobs');
-        state.jobs = payload.jobs || [];
+        const nextJobs = payload.jobs || [];
+        const nextJobsSignature = JSON.stringify(nextJobs);
+        const jobsChanged = nextJobsSignature !== state.jobsSignature;
+        state.jobsSignature = nextJobsSignature;
+        state.jobs = nextJobs;
         state.completedJobs = state.jobs.filter((job) => job.status === 'completed');
+        let shouldRender = jobsChanged;
         if (state.resultTask) {
           const current = state.jobs.find((job) => job.id === state.resultTask.id);
-          if (current) state.resultTask = current;
+          if (current && current !== state.resultTask) state.resultTask = current;
         }
         const hashJobId = resultIdFromHash();
         if (hashJobId) {
           const hashTask = state.jobs.find((job) => job.id === hashJobId);
           if (hashTask) {
+            shouldRender = shouldRender || state.view !== 'result-detail' || !state.resultTask || state.resultTask.id !== hashTask.id;
             state.resultTask = hashTask;
             state.view = 'result-detail';
           }
         }
-        render();
+        if (shouldRender) render();
       } catch (err) { toast(err.message); }
     }
     async function refreshSettings() {
@@ -1173,6 +1311,8 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       const task = state.completedJobs.find((item) => item.id === jobId) || state.jobs.find((item) => item.id === jobId);
       if (!task) return;
       state.resultTask = task;
+      state.resultContentRequestId += 1;
+      state.resultContentModal = null;
       resetResultFilters();
       state.resultFilterOptions = { keywords: [], branches: [], file_types: [], result_types: [], authors: [] };
       state.resultTotalCount = Number(task.result_count || 0);
@@ -1191,6 +1331,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
       state.resultSelectedTypes.forEach((value) => params.append('result_type', value));
       state.resultSelectedAuthors.forEach((value) => params.append('author', value));
       if (state.resultContentFilter.trim()) params.set('content', state.resultContentFilter.trim());
+      params.set('content_preview', '1');
       params.set('page', String(state.resultPage));
       params.set('page_size', String(state.resultPageSize));
       return params;
@@ -1208,11 +1349,36 @@ def build_app_html(default_gitlab_url: str = "") -> str:
         state.resultPageSize = Number(payload.page_size || state.resultPageSize || 100);
         state.resultTotalPages = Number(payload.total_pages || Math.max(1, Math.ceil(state.resultTotalCount / state.resultPageSize)));
         state.resultFilterOptions = payload.filter_options || { keywords: [], branches: [], file_types: [], result_types: [], authors: [] };
+        state.resultContentRequestId += 1;
+        state.resultContentModal = null;
         setResultHash(taskId, { replace: true });
         state.__resultHash = window.location.hash;
         render();
         if (options.restoreFocus) restoreInputFocus('result-content-filter', options.selectionStart, options.selectionEnd);
       } catch (err) { toast(err.message); }
+    }
+    async function openResultContent(rowIndex) {
+      if (!state.resultTask) return;
+      const row = state.resultRows.find((item) => Number(item.row_index) === Number(rowIndex));
+      if (!row) return;
+      const requestId = ++state.resultContentRequestId;
+      state.resultContentModal = { row, loading: true, error: '' };
+      render();
+      try {
+        const payload = await api('/api/jobs/' + encodeURIComponent(state.resultTask.id) + '/results/' + encodeURIComponent(String(rowIndex)));
+        if (requestId !== state.resultContentRequestId || !state.resultContentModal) return;
+        state.resultContentModal = { row: payload.row || row, loading: false, error: '' };
+        render();
+      } catch (err) {
+        if (requestId !== state.resultContentRequestId || !state.resultContentModal) return;
+        state.resultContentModal = { row, loading: false, error: err.message || '完整内容加载失败。' };
+        render();
+      }
+    }
+    function closeResultContent() {
+      state.resultContentRequestId += 1;
+      state.resultContentModal = null;
+      render();
     }
     async function setResultPage(page) {
       if (!state.resultTask) return;
@@ -1736,7 +1902,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
                   </thead>
                   <tbody>
                     ${state.resultRows.length
-                      ? state.resultRows.map((row) => `<tr><td>${esc(row.word)}</td><td><span class="chip">${esc(resultTypeLabel(row.result_type))}</span></td><td>${esc(row.branch)}</td><td>${projectBranchUrl(row) ? `<a href="${esc(projectBranchUrl(row))}" target="_blank" rel="noreferrer" style="color: var(--accent-strong); font-weight: 700;">${esc(row.project_name)}</a>` : esc(row.project_name)}</td><td>${esc(resultLocationLabel(row))}</td><td>${resultOpenUrl(row) ? `<a href="${esc(resultOpenUrl(row))}" target="_blank" rel="noreferrer" style="color: var(--accent-strong); font-weight: 700;">${esc(resultOpenLabel(row))}</a>` : ''}</td><td>${esc(resultContentLabel(row))}</td></tr>`).join('')
+                      ? state.resultRows.map((row, index) => `<tr><td>${esc(row.word)}</td><td><span class="chip">${esc(resultTypeLabel(row.result_type))}</span></td><td>${esc(row.branch)}</td><td>${projectBranchUrl(row) ? `<a href="${esc(projectBranchUrl(row))}" target="_blank" rel="noreferrer" style="color: var(--accent-strong); font-weight: 700;">${esc(row.project_name)}</a>` : esc(row.project_name)}</td><td>${esc(resultLocationLabel(row))}</td><td>${resultOpenUrl(row) ? `<a href="${esc(resultOpenUrl(row))}" target="_blank" rel="noreferrer" style="color: var(--accent-strong); font-weight: 700;">${esc(resultOpenLabel(row))}</a>` : ''}</td><td>${renderResultContentCell(row, index)}</td></tr>`).join('')
                       : '<tr><td colspan="7" style="text-align:center; color:#6b6c72;">当前过滤条件下没有匹配结果。</td></tr>'}
                   </tbody>
                 </table>
@@ -1744,6 +1910,7 @@ def build_app_html(default_gitlab_url: str = "") -> str:
               ${renderResultPagination('bottom')}
             </section>
           </div>
+          ${renderResultContentModal()}
         </div>`;
     }
     function renderSettingsPage() {
@@ -1997,6 +2164,8 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     window.setView = setView;
     window.setResultHash = setResultHash;
     window.setResultPage = setResultPage;
+    window.openResultContent = openResultContent;
+    window.closeResultContent = closeResultContent;
     window.toggleResultFilterMenu = toggleResultFilterMenu;
     window.clearResultFilters = clearResultFilters;
     window.setBranchMode = setBranchMode;
@@ -2011,6 +2180,10 @@ def build_app_html(default_gitlab_url: str = "") -> str:
     window.saveSettings = saveSettings;
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return;
+      if (state.resultContentModal) {
+        closeResultContent();
+        return;
+      }
       if (!Object.values(state.resultFilterMenus).some(Boolean)) return;
       const openKind = Object.keys(state.resultFilterMenus).find((kind) => state.resultFilterMenus[kind]);
       if (openKind) state.__resultFocusTarget = 'result-filter-trigger-' + openKind;

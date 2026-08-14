@@ -10,6 +10,7 @@ from typing import Any
 LOCAL_CREDENTIAL_BACKEND = "local_v1"
 RESULT_FILE_TYPE_NONE = "无后缀"
 SUPPORTED_RESULT_TYPES = ("code", "commit")
+RESULT_CONTENT_PREVIEW_LIMIT = 800
 
 
 def normalize_result_file_type(value: str) -> str:
@@ -463,6 +464,7 @@ class ServeStore:
         result_types: list[str] | None = None,
         authors: list[str] | None = None,
         content: str | None = None,
+        content_preview_chars: int | None = None,
     ) -> tuple[list[dict[str, Any]], int]:
         where_sql = "job_id = ?"
         params: list[Any] = [job_id]
@@ -501,12 +503,37 @@ class ServeStore:
             like = f"%{content}%"
             where_sql += " AND (data LIKE ? OR commit_title LIKE ? OR commit_message LIKE ?)"
             params.extend([like] * 3)
+        if content_preview_chars is None:
+            select_sql = "*"
+        else:
+            preview_chars = max(1, min(int(content_preview_chars), 4000))
+            content_expression = (
+                "CASE WHEN result_type = 'commit' "
+                "THEN COALESCE(NULLIF(commit_message, ''), data, '') "
+                "ELSE data END"
+            )
+            select_sql = f"""
+                job_id, row_index, result_type, word, branch, project_id, project_name, project_url,
+                file_name, line_url, commit_id, commit_short_id, commit_title, commit_author_name,
+                commit_author_email, commit_authored_date, commit_committed_date, commit_url,
+                substr({content_expression}, 1, {preview_chars}) AS content_preview,
+                length({content_expression}) AS content_length,
+                CASE WHEN length({content_expression}) > {preview_chars} THEN 1 ELSE 0 END AS content_truncated
+            """
         count_sql = f"SELECT COUNT(*) FROM job_results WHERE {where_sql}"
-        rows_sql = f"SELECT * FROM job_results WHERE {where_sql} ORDER BY row_index LIMIT ? OFFSET ?"
+        rows_sql = f"SELECT {select_sql} FROM job_results WHERE {where_sql} ORDER BY row_index LIMIT ? OFFSET ?"
         with self._connect() as conn:
             total_count = int(conn.execute(count_sql, params).fetchone()[0])
             rows = conn.execute(rows_sql, [*params, limit, offset]).fetchall()
         return [dict(row) for row in rows], total_count
+
+    def get_job_result(self, job_id: str, row_index: int) -> dict[str, Any] | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM job_results WHERE job_id = ? AND row_index = ?",
+                (job_id, row_index),
+            ).fetchone()
+        return None if row is None else dict(row)
 
     def list_job_result_filter_options(self, job_id: str) -> dict[str, list[str]]:
         with self._connect() as conn:
