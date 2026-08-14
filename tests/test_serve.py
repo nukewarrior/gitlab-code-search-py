@@ -626,6 +626,180 @@ class ServeBootstrapTests(unittest.TestCase):
             self.assertEqual(commit_rows[0]["result_type"], "commit")
             self.assertEqual(commit_rows[0]["commit_id"], "abcdef123456")
 
+    def test_store_filters_results_by_branch_file_type_and_result_type(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ServeStore(tmpdir)
+            store.ensure_initialized()
+            store.insert_job(
+                {
+                    "id": "job-filters",
+                    "owner_identity": "user-1",
+                    "gitlab_url": "https://gitlab.example.com",
+                    "project_ids": [],
+                    "keywords": ["foo"],
+                    "branch_mode": "all",
+                    "branch_name": None,
+                    "formats": ["xlsx"],
+                    "status": "completed",
+                    "progress": 100,
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "started_at": None,
+                    "finished_at": None,
+                    "failure_reason": None,
+                    "export_base_name": None,
+                    "export_paths": [],
+                    "original_job_id": None,
+                }
+            )
+            store.add_job_results(
+                "job-filters",
+                [
+                    {
+                        "word": "foo",
+                        "branch": "main",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "src/App.PY",
+                        "line_url": "https://gitlab.example.com/proj/-/blob/main/src/App.PY#L1",
+                        "data": "foo",
+                    },
+                    {
+                        "word": "foo",
+                        "branch": "release/2026-q2",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "config.yaml",
+                        "line_url": "https://gitlab.example.com/proj/-/blob/release/config.yaml#L2",
+                        "data": "foo",
+                    },
+                    {
+                        "word": "foo",
+                        "branch": "release/2026-q2",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "Dockerfile",
+                        "line_url": "https://gitlab.example.com/proj/-/blob/release/Dockerfile#L3",
+                        "data": "foo",
+                    },
+                    {
+                        "result_type": "commit",
+                        "word": "foo",
+                        "branch": "release/2026-q2",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "abcdef12",
+                        "line_url": "https://gitlab.example.com/proj/-/commit/abcdef123456",
+                        "data": "Fix foo",
+                        "commit_id": "abcdef123456",
+                        "commit_short_id": "abcdef12",
+                        "commit_message": "Fix foo",
+                    },
+                ],
+            )
+
+            rows, total_count = store.list_job_results_page(
+                "job-filters",
+                branches=["main", "release/2026-q2"],
+                file_types=["yaml", "无后缀"],
+                result_types=["code"],
+                limit=10,
+            )
+            self.assertEqual(total_count, 2)
+            self.assertEqual([row["file_name"] for row in rows], ["config.yaml", "Dockerfile"])
+
+            rows, total_count = store.list_job_results_page(
+                "job-filters",
+                file_types=[".py"],
+                limit=10,
+            )
+            self.assertEqual(total_count, 2)
+            self.assertEqual({row["result_type"] for row in rows}, {"code", "commit"})
+
+            options = store.list_job_result_filter_options("job-filters")
+            self.assertEqual(options["branches"], ["main", "release/2026-q2"])
+            self.assertEqual(options["file_types"], ["py", "yaml", "无后缀"])
+            self.assertEqual(options["result_types"], ["code", "commit"])
+
+    def test_result_handler_accepts_repeated_filter_parameters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            store = ServeStore(tmpdir)
+            store.ensure_initialized()
+            store.insert_job(
+                {
+                    "id": "job-handler",
+                    "owner_identity": "user-1",
+                    "gitlab_url": "https://gitlab.example.com",
+                    "project_ids": [],
+                    "keywords": ["foo"],
+                    "branch_mode": "all",
+                    "branch_name": None,
+                    "formats": ["xlsx"],
+                    "status": "completed",
+                    "progress": 100,
+                    "created_at": "2026-01-01T00:00:00+00:00",
+                    "started_at": None,
+                    "finished_at": None,
+                    "failure_reason": None,
+                    "export_base_name": None,
+                    "export_paths": [],
+                    "original_job_id": None,
+                }
+            )
+            store.add_job_results(
+                "job-handler",
+                [
+                    {
+                        "word": "foo",
+                        "branch": "main",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "app.py",
+                        "line_url": "https://gitlab.example.com/proj/-/blob/main/app.py#L1",
+                        "data": "foo",
+                    },
+                    {
+                        "word": "foo",
+                        "branch": "release/2026-q2",
+                        "project_id": 1,
+                        "project_name": "proj",
+                        "project_url": "https://gitlab.example.com/proj",
+                        "file_name": "Dockerfile",
+                        "line_url": "https://gitlab.example.com/proj/-/blob/release/Dockerfile#L2",
+                        "data": "foo",
+                    },
+                ],
+            )
+            app = ServeApplication.__new__(ServeApplication)
+            app.store = store
+            app._get_owned_job = lambda user_ctx, job_id: store.get_job(job_id)
+            response = {}
+            app._respond_json = lambda request, status, payload: response.update(status=status, payload=payload)
+
+            app._handle_job_results(
+                DummyRequest(),
+                {"user": {"identity": "user-1"}, "session_id": "session-1"},
+                "job-handler",
+                {
+                    "q": ["foo"],
+                    "branch": ["main", "release/2026-q2"],
+                    "file_type": [".PY", "无后缀"],
+                    "result_type": ["code"],
+                    "page": ["2"],
+                    "page_size": ["1"],
+                },
+            )
+
+            self.assertEqual(response["status"], 200)
+            self.assertEqual(response["payload"]["total_count"], 2)
+            self.assertEqual(response["payload"]["page"], 2)
+            self.assertEqual(response["payload"]["rows"][0]["file_name"], "Dockerfile")
+            self.assertEqual(response["payload"]["filter_options"]["branches"], ["main", "release/2026-q2"])
+
 
 class WebUiHtmlTests(unittest.TestCase):
     def test_build_app_html_contains_workbench_views(self) -> None:
@@ -640,6 +814,11 @@ class WebUiHtmlTests(unittest.TestCase):
         self.assertIn("personal_access_tokens", html)
         self.assertIn("api", html)
         self.assertIn("read_api", html)
+        self.assertIn("结果筛选", html)
+        self.assertIn("result-filter-option", html)
+        self.assertIn("renderResultPagination", html)
+        self.assertIn("file_type", html)
+        self.assertIn("page_size", html)
 
 
 if __name__ == "__main__":
